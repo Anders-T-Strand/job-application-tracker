@@ -1,0 +1,25 @@
+# secrets and local state
+.env
+secrets/
+data/
+*.db
+*.db-wal
+*.db-shm
+.backup_sas_url
+.backup_ping_url
+backup.log
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+
+# editors / local tooling
+.idea/
+.vscode/
+.DS_Store
+.claude/settings.local.json

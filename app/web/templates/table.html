@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro th(col, label) -%}
+  <th><a href="/table?sort={{ col }}&order={{ 'asc' if sort == col and order == 'desc' else 'desc' }}{% if hidden %}&hidden=1{% endif %}">
+    {{ label }}{% if sort == col %} {{ '▲' if order == 'asc' else '▼' }}{% endif %}
+  </a></th>
+{%- endmacro %}
+<table class="apps">
+  <thead>
+    <tr>
+      {{ th('company', 'Company') }}
+      {{ th('role_title', 'Role') }}
+      {{ th('status', 'Status') }}
+      {{ th('applied_at', 'Applied') }}
+      {{ th('last_activity_at', 'Last activity') }}
+    </tr>
+  </thead>
+  <tbody>
+    {% for app in apps %}
+    <tr class="{% if app.stale %}stale{% endif %}" onclick="location='/applications/{{ app.id }}'">
+      <td>{{ app.company }}</td>
+      <td>{{ app.role_title or '—' }}</td>
+      <td><span class="pill pill-{{ app.status }}">{{ app.status }}</span>
+          {% if app.stale %}<span class="flag">follow up</span>{% endif %}
+          {% if app.hidden_at %}<span class="flag">hidden</span>{% endif %}</td>
+      <td>{{ app.applied_at[:10] }}</td>
+      <td>{{ app.last_activity_at[:10] }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="empty">No applications yet — add one or wait for the poller.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if hidden_count %}
+<p class="meta">
+  {% if hidden %}<a href="/table">Hide the {{ hidden_count }} old rejections</a>
+  {% else %}{{ hidden_count }} rejected 60+ days ago {{ 'is' if hidden_count == 1 else 'are' }} hidden —
+  <a href="/table?hidden=1">show</a>{% endif %}
+</p>
+{% endif %}
+{% endblock %}

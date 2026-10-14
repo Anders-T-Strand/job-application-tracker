@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10141a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Job Tracker">
+  <title>Job Tracker</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+<nav>
+  <span class="brand">Job Tracker</span>
+  <a href="/">Board</a>
+  <a href="/table">Table</a>
+  <a href="/discover">Discover{% if discover_count %} <span class="badge">{{ discover_count }}</span>{% endif %}</a>
+  <a href="/tailor">Tailor</a>
+  <a href="/stats">Stats</a>
+  <a href="/review">Review{% if review_count %} <span class="badge">{{ review_count }}</span>{% endif %}</a>
+  <a class="btn" href="/applications/new">+ Add</a>
+</nav>
+<main>
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

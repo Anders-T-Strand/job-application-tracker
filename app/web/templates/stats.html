@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stats-grid">
+  <div class="stat"><div class="num">{{ total }}</div><div class="label">applications</div></div>
+  <div class="stat"><div class="num">{{ response_rate }}%</div><div class="label">response rate</div></div>
+  <div class="stat">
+    <div class="num">{{ median_days if median_days is not none else '—' }}</div>
+    <div class="label">median days to first response</div>
+  </div>
+</div>
+
+<h2>By status</h2>
+<table class="apps narrow">
+  {% for status in statuses %}
+  <tr><td><span class="pill pill-{{ status }}">{{ status }}</span></td>
+      <td>{{ status_counts.get(status, 0) }}</td></tr>
+  {% endfor %}
+</table>
+
+<h2>Applications per week</h2>
+<table class="apps narrow">
+  {% for week in weeks %}
+  <tr><td>{{ week.week }}</td><td>{{ week.c }}</td></tr>
+  {% else %}
+  <tr><td colspan="2" class="empty">No data yet.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

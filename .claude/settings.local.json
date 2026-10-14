@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "Bash(curl -fsSL -o app/web/static/htmx.min.js https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js)"
+    ]
+  }
+}

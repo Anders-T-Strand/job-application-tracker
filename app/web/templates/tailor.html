@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Tailor résumé</h1>
+<p class="hint">
+  Compare a job posting against your résumé (<code>data/resume.txt</code>) and see which skills
+  to surface and which gaps to address before you apply. Load an already-scraped posting, or
+  paste one that hasn't been scraped.
+</p>
+
+{% if recent %}
+<form method="get" action="/tailor" class="tailor-load">
+  <select name="posting_id" aria-label="Load a scraped posting">
+    <option value="">— load a scraped posting —</option>
+    {% for p in recent %}
+    <option value="{{ p.id }}">{{ p.title }} · {{ p.company_name }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="secondary">Load</button>
+</form>
+{% endif %}
+
+<form method="post" action="/tailor" class="app-form tailor-form">
+  <label>Title
+    <input type="text" name="title" value="{{ prefill.title }}" placeholder="e.g. Machine Learning Intern">
+  </label>
+  <label>Company
+    <input type="text" name="company" value="{{ prefill.company }}" placeholder="e.g. Acme">
+  </label>
+  <label>Job description
+    <textarea name="description" rows="12" placeholder="Paste the full job description…">{{ prefill.description }}</textarea>
+  </label>
+  <button type="submit">Analyze</button>
+</form>
+
+{% if error %}<p class="empty">{{ error }}</p>{% endif %}
+
+{% if analysis %}
+<h2>What to put on the résumé{% if prefill.title %} for {{ prefill.title }}{% endif %}</h2>
+<div class="tailor-results">
+  <div class="posting">
+    <h3>Already on your résumé — make these prominent</h3>
+    {% if analysis.matched %}
+    <ul class="tag-list">
+      {% for m in analysis.matched %}
+      <li><span class="pill tag-match">{{ m.skill }}</span>{% if m.note %} <span class="meta">{{ m.note }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">No strong matches found.</p>{% endif %}
+  </div>
+
+  <div class="posting">
+    <h3>Missing or weak — add only what you truly have</h3>
+    {% if analysis.missing %}
+    <ul class="tag-list">
+      {% for m in analysis.missing %}
+      <li><span class="pill tag-gap">{{ m.skill }}</span>{% if m.note %} <span class="meta">{{ m.note }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">Nothing obvious missing.</p>{% endif %}
+  </div>
+
+  {% if analysis.advice %}
+  <div class="posting">
+    <h3>Tailoring tips</h3>
+    <ul class="advice">
+      {% for a in analysis.advice %}<li>{{ a }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

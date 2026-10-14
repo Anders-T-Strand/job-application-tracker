@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+{# query string for this page with some filters overridden #}
+{% macro q(v=view, s=sort, sp=sponsor, t=term) -%}
+view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}
+{%- endmacro %}
+<h1>Discover</h1>
+<p class="hint">
+  Postings from {{ company_count }} tracked company board{{ '' if company_count == 1 else 's' }}
+  plus the job lists of
+  {% for name, url in sources.items() %}<a href="{{ url }}" target="_blank" rel="noopener">{{ name }}</a>{{ ' and ' if not loop.last }}{% endfor %}
+  (listings and visa estimates are theirs), filtered for early-career AI/ML/DS roles in the US
+  and scored by an LLM against your resume.
+  {% if company_count == 0 %}Seed boards with <code>python scripts/seed_companies.py</code>.{% endif %}
+</p>
+
+<div class="disc-toolbar">
+  <div class="tabs">
+    {% for v in views %}
+    <a class="tab {% if v == view %}active{% endif %}" href="/discover?{{ q(v=v) }}">
+      {{ v }}{% if v == 'new' and discover_count %} <span class="badge">{{ discover_count }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  <div class="sorts meta">
+    sort:
+    {% for s in ('score', 'lca', 'recent') %}
+    <a class="{% if s == sort %}active{% endif %}" href="/discover?{{ q(s=s) }}">{{ 'H-1B history' if s == 'lca' else s }}</a>
+    {% endfor %}
+    · <a class="{% if sponsor %}active{% endif %}" href="/discover?{{ q(sp=not sponsor) }}"
+         title="Only postings a feed marks as likely to sponsor visas">sponsors only</a>
+    {% if view == 'new' and term_filter %}
+    · terms:
+    <a class="{% if term == 'target' %}active{% endif %}" href="/discover?{{ q(t='target') }}"
+       title="Final-term internships and new-grad roles">{{ term_labels['final_term'] | lower }} + new grad</a>
+    <a class="{% if term == 'all' %}active{% endif %}" href="/discover?{{ q(t='all') }}">all</a>
+    {% endif %}
+  </div>
+</div>
+
+{% for p in postings %}
+<div class="posting {% if not p.is_live %}gone{% endif %}">
+  <div class="review-head">
+    <span>
+      {% if p.llm_score is not none %}<span class="score s{{ p.llm_score // 20 }}">{{ p.llm_score }}</span>{% endif %}
+      <a class="posting-title" href="{{ p.url }}" target="_blank" rel="noopener">{{ p.title }}</a>
+    </span>
+    <span class="meta">
+      {{ p.company_name }}
+      {% if p.lca_filings %} · <span class="lca" title="DOL LCA filings{% if p.lca_year %} FY{{ p.lca_year }}{% endif %}">{{ p.lca_filings }} H-1B</span>{% endif %}
+      {% if p.visa_sponsor %} · <span class="lca" title="The feed's automated estimate, not an employer statement">sponsors visas</span>{% endif %}
+    </span>
+  </div>
+  <p class="meta">
+    {% if term_labels[p.term] %}<span class="term">{{ term_labels[p.term] }}</span> · {% endif %}
+    {{ p.location or 'location unknown' }}{% if p.remote %} · remote{% endif %}
+    · seen {{ p.first_seen[:10] }}
+    {% if p.feed %} · via {{ 'Zapply' if p.feed.startswith('zapply') else 'SimplifyJobs' }}{% endif %}
+    {% if not p.is_live %} · <span class="flag">no longer listed</span>{% endif %}
+  </p>
+  {% if p.llm_rationale %}<p class="snippet">{{ p.llm_rationale }}</p>{% endif %}
+  <div class="review-actions">
+    {% if p.status in ('new', 'dismissed') %}
+    <form method="post" action="/discover/{{ p.id }}/save?{{ q() }}">
+      <button type="submit">Save</button>
+    </form>
+    {% endif %}
+    {% if p.status != 'applied' %}
+    <form method="post" action="/discover/{{ p.id }}/applied?{{ q() }}">
+      <button type="submit" class="secondary">Applied ↗</button>
+    </form>
+    {% endif %}
+    {% if p.status in ('new', 'saved') %}
+    <form method="post" action="/discover/{{ p.id }}/dismiss?{{ q() }}">
+      <button type="submit" class="secondary">Dismiss</button>
+    </form>
+    {% endif %}
+    {% if p.status in ('saved', 'dismissed') %}
+    <form method="post" action="/discover/{{ p.id }}/restore?{{ q() }}">
+      <button type="submit" class="secondary">Back to new</button>
+    </form>
+    {% endif %}
+    <a class="meta" href="/tailor?posting_id={{ p.id }}">Tailor résumé →</a>
+    {% if p.status == 'applied' and p.application_id %}
+    <a class="meta" href="/applications/{{ p.application_id }}">→ tracked application</a>
+    {% endif %}
+  </div>
+</div>
+{% else %}
+<p class="empty">
+  {% if view == 'new' %}Nothing new{% if term == 'target' %} for {{ term_labels['final_term'] | lower }} or new grad
+  — <a href="/discover?{{ q(t='all') }}">show all terms</a>{% else %} — check back after the next poll{% endif %}.
+  {% else %}No {{ view }} postings.{% endif %}
+</p>
+{% endfor %}
+{% endblock %}

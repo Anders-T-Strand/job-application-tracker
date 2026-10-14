@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Review queue</h1>
+<p class="hint">Emails the classifier couldn't confidently match. Assign to an application, create a new one, or dismiss.</p>
+{% for email in emails %}
+<div class="review-item">
+  <div class="review-head">
+    <strong>{{ email.subject or '(no subject)' }}</strong>
+    <span class="meta">{{ email.from_addr }} · {{ email.received_at[:10] }}</span>
+  </div>
+  <p class="snippet">{{ email.snippet }}</p>
+  {% if email.cls %}
+  <p class="meta">
+    classifier: <span class="pill">{{ email.cls.type }}</span>
+    {% if email.cls.company %} · {{ email.cls.company }}{% endif %}
+    {% if email.cls.role_title %} · {{ email.cls.role_title }}{% endif %}
+    · confidence {{ '%.0f' % (email.cls.confidence * 100) }}%
+  </p>
+  {% else %}
+  <p class="meta">classifier output was unusable</p>
+  {% endif %}
+  <div class="review-actions">
+    <form method="post" action="/review/{{ email.id }}/assign">
+      <select name="application_id" required>
+        <option value="" disabled selected>assign to…</option>
+        {% for app in apps %}
+        <option value="{{ app.id }}">{{ app.company }}{% if app.role_title %} — {{ app.role_title }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <button type="submit">Assign</button>
+    </form>
+    <form method="post" action="/review/{{ email.id }}/create">
+      <input name="company" placeholder="company" value="{{ email.cls.company if email.cls and email.cls.company else '' }}" required>
+      <input name="role_title" placeholder="role (optional)" value="{{ email.cls.role_title if email.cls and email.cls.role_title else '' }}">
+      <button type="submit">Create application</button>
+    </form>
+    <form method="post" action="/review/{{ email.id }}/dismiss">
+      <button type="submit" class="secondary">Dismiss</button>
+    </form>
+  </div>
+</div>
+{% else %}
+<p class="empty">Nothing to review. 🎉</p>
+{% endfor %}
+{% endblock %}

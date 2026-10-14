@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dashboard",
+      "runtimeExecutable": "env",
+      "runtimeArgs": ["POLL_ENABLED=false", ".venv/bin/uvicorn", "app.main:app", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "dashboard-windows",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set POLL_ENABLED=false&& set DISCOVERY_ENABLED=false&& .venv\\Scripts\\uvicorn.exe app.main:app --port 8000"],
+      "port": 8000
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Pinned so the container name doesn't depend on the checkout directory
+# (scripts/backup.sh addresses it as job-application-tracker-job-tracker-1).
+name: job-application-tracker
+
+services:
+  job-tracker:
+    build: .
+    restart: unless-stopped
+    ports:
+      # Host binding is localhost-only; access goes through `tailscale serve`.
+      - "127.0.0.1:8080:8000"
+    env_file: .env
+    environment:
+      # Ollama runs on the host. Docker Desktop resolves host.docker.internal
+      # (and reaches Ollama's default 127.0.0.1 binding); extra_hosts adds the
+      # name on plain Linux Docker, where Ollama must listen beyond loopback.
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data
+      - ./secrets:/secrets
+    # Discovery runs in-process (on container start, then every
+    # DISCOVERY_INTERVAL_HOURS). On a 1GB VM, set DISCOVERY_ENABLED=false in
+    # .env, cap this at 256m, and run discovery from cron instead (README).
+    mem_limit: 1g

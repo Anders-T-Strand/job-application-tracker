@@ -1,0 +1,16 @@
+{% set total = columns.values() | map("length") | sum %}
+<div class="board">
+  {% for status in statuses %}
+  <section class="col s-{{ status }}{% if total > 0 and not columns[status] %} col-empty{% endif %}">
+    <h2>{{ status }} <span class="count">{{ columns[status] | length }}</span></h2>
+    {% for app in columns[status] %}
+    <a class="card s-{{ status }}{% if app.stale %} stale{% endif %}" href="/applications/{{ app.id }}">
+      <div class="company">{{ app.company }}</div>
+      {% if app.role_title %}<div class="role">{{ app.role_title }}</div>{% endif %}
+      <div class="meta">applied {{ app.applied_at[:10] }}</div>
+      {% if app.stale %}<span class="flag">follow up</span>{% endif %}
+    </a>
+    {% endfor %}
+  </section>
+  {% endfor %}
+</div>
