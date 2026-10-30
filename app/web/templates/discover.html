@@ -1,9 +1,16 @@
 {% extends "base.html" %}
 {% block content %}
-{# query string for this page with some filters overridden #}
-{% macro q(v=view, s=sort, sp=sponsor, t=term, lo=low) -%}
-view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}{% if lo %}&low=1{% endif %}
-{%- endmacro %}
+{% set term_names = {
+  'final_term': term_labels['final_term'], 'new_grad': 'New grad',
+  'later': term_labels['later'], 'unspecified': 'Other'} %}
+{% set term_hints = {
+  'final_term': 'Internships and co-ops in your last school term',
+  'new_grad': 'Full-time new-grad and entry-level roles',
+  'later': 'Summer internships and later, which usually mean returning to school',
+  'unspecified': 'Internships that name no term, and roles not marked new grad'} %}
+{% set kind_names = {
+  'intern': 'Internship', 'co-op': 'Co-op', 'associate': 'Associate',
+  'analyst': 'Analyst', 'other': 'Other titles'} %}
 <h1>Discover</h1>
 <p class="hint">
   Postings from {{ company_count }} tracked company board{{ '' if company_count == 1 else 's' }}
@@ -17,7 +24,7 @@ view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}{% if lo %
 <div class="disc-toolbar">
   <div class="tabs">
     {% for v in views %}
-    <a class="tab {% if v == view %}active{% endif %}" href="/discover?{{ q(v=v) }}">
+    <a class="tab {% if v == f.view %}active{% endif %}" href="/discover?{{ f.query(view=v) }}">
       {{ v }}{% if v == 'new' and discover_count %} <span class="badge">{{ discover_count }}</span>{% endif %}
     </a>
     {% endfor %}
@@ -25,18 +32,48 @@ view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}{% if lo %
   <div class="sorts meta">
     sort:
     {% for s in ('score', 'lca', 'recent') %}
-    <a class="{% if s == sort %}active{% endif %}" href="/discover?{{ q(s=s) }}">{{ 'H-1B history' if s == 'lca' else s }}</a>
+    <a class="{% if s == f.sort %}active{% endif %}" href="/discover?{{ f.query(sort=s) }}">{{ 'H-1B history' if s == 'lca' else s }}</a>
     {% endfor %}
-    · <a class="{% if sponsor %}active{% endif %}" href="/discover?{{ q(sp=not sponsor) }}"
-         title="Only postings a feed marks as likely to sponsor visas">sponsors only</a>
-    {% if view == 'new' and term_filter %}
-    · terms:
-    <a class="{% if term == 'target' %}active{% endif %}" href="/discover?{{ q(t='target') }}"
-       title="Final-term internships and new-grad roles">{{ term_labels['final_term'] | lower }} + new grad</a>
-    <a class="{% if term == 'all' %}active{% endif %}" href="/discover?{{ q(t='all') }}">all</a>
-    {% endif %}
   </div>
 </div>
+
+{# Checkboxes submit on change. Within a row any checked value matches (none checked: any);
+   a posting has to match every row. #}
+<form class="disc-filters" method="get" action="/discover"
+      onchange="if (event.target.type === 'checkbox') this.requestSubmit()">
+  <input type="hidden" name="view" value="{{ f.view }}">
+  <input type="hidden" name="sort" value="{{ f.sort }}">
+  <input type="hidden" name="term" value="all">
+  <div class="filter-group">
+    <span class="filter-name">Term</span>
+    {% for t in term_options %}
+    <label class="chip" title="{{ term_hints[t] }}">
+      <input type="checkbox" name="term" value="{{ t }}" {% if t in shown_terms %}checked{% endif %}><span>{{ term_names[t] }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="filter-group">
+    <span class="filter-name">Type</span>
+    {% for k in kind_options %}
+    <label class="chip">
+      <input type="checkbox" name="kind" value="{{ k }}" {% if k in f.kinds %}checked{% endif %}><span>{{ kind_names[k] }}</span>
+    </label>
+    {% endfor %}
+  </div>
+  <div class="filter-group">
+    <label class="chip" title="A feed marks the employer as a likely sponsor, or the posting says it sponsors visas or welcomes student visas (CPT/OPT)">
+      <input type="checkbox" name="visa" value="1" {% if f.visa %}checked{% endif %}><span>Visa-friendly</span>
+    </label>
+    {% if f.view == 'new' %}
+    <label class="chip">
+      <input type="checkbox" name="low" value="1" {% if f.low %}checked{% endif %}><span>Scores below {{ min_score }}</span>
+    </label>
+    {% endif %}
+    <input type="search" name="search" value="{{ f.search }}" placeholder="Title or company" aria-label="Search title or company">
+    <button type="submit" class="secondary">Search</button>
+    {% if filtered %}<a class="meta" href="/discover?view={{ f.view }}&sort={{ f.sort }}">reset</a>{% endif %}
+  </div>
+</form>
 
 {% for p in postings %}
 <div class="posting {% if not p.is_live %}gone{% endif %}">
@@ -48,7 +85,7 @@ view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}{% if lo %
     <span class="meta">
       {{ p.company_name }}
       {% if p.lca_filings %} · <span class="lca" title="DOL LCA filings{% if p.lca_year %} FY{{ p.lca_year }}{% endif %}">{{ p.lca_filings }} H-1B</span>{% endif %}
-      {% if p.visa_sponsor %} · <span class="lca" title="The feed's automated estimate, not an employer statement">sponsors visas</span>{% endif %}
+      {% if p.visa_note %} · <span class="lca" title="{{ p.visa_note }}">visa-friendly</span>{% endif %}
     </span>
   </div>
   <p class="meta">
@@ -61,22 +98,22 @@ view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}{% if lo %
   {% if p.llm_rationale %}<p class="snippet">{{ p.llm_rationale }}</p>{% endif %}
   <div class="review-actions">
     {% if p.status in ('new', 'dismissed') %}
-    <form method="post" action="/discover/{{ p.id }}/save?{{ q() }}">
+    <form method="post" action="/discover/{{ p.id }}/save?{{ f.query() }}">
       <button type="submit">Save</button>
     </form>
     {% endif %}
     {% if p.status != 'applied' %}
-    <form method="post" action="/discover/{{ p.id }}/applied?{{ q() }}">
+    <form method="post" action="/discover/{{ p.id }}/applied?{{ f.query() }}">
       <button type="submit" class="secondary">Applied ↗</button>
     </form>
     {% endif %}
     {% if p.status in ('new', 'saved') %}
-    <form method="post" action="/discover/{{ p.id }}/dismiss?{{ q() }}">
+    <form method="post" action="/discover/{{ p.id }}/dismiss?{{ f.query() }}">
       <button type="submit" class="secondary">Dismiss</button>
     </form>
     {% endif %}
     {% if p.status in ('saved', 'dismissed') %}
-    <form method="post" action="/discover/{{ p.id }}/restore?{{ q() }}">
+    <form method="post" action="/discover/{{ p.id }}/restore?{{ f.query() }}">
       <button type="submit" class="secondary">Back to new</button>
     </form>
     {% endif %}
@@ -89,18 +126,21 @@ view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}{% if lo %
 {% else %}
 {% if not hidden_low %}
 <p class="empty">
-  {% if view == 'new' %}Nothing new{% if term == 'target' %} for {{ term_labels['final_term'] | lower }} or new grad
-  — <a href="/discover?{{ q(t='all') }}">show all terms</a>{% else %} — check back after the next poll{% endif %}.
-  {% else %}No {{ view }} postings.{% endif %}
+  {% if f.view == 'new' %}Nothing new
+  {%- if default_terms %} for {{ term_names['final_term'] | lower }} or new grad
+  — <a href="/discover?{{ f.query(terms=()) }}">show all terms</a>
+  {%- elif filtered %} matches these filters
+  {%- else %} — check back after the next poll{% endif %}.
+  {% else %}No {{ f.view }} postings{{ ' match these filters' if filtered }}.{% endif %}
 </p>
 {% endif %}
 {% endfor %}
 {% if hidden_low %}
 <p class="meta">
   {{ hidden_low }} posting{{ 's' if hidden_low != 1 }} scored below {{ min_score }} {{ 'is' if hidden_low == 1 else 'are' }} hidden
-  — <a href="/discover?{{ q(lo=True) }}">show</a>
+  — <a href="/discover?{{ f.query(low=True) }}">show</a>
 </p>
-{% elif low and view == 'new' %}
-<p class="meta"><a href="/discover?{{ q(lo=False) }}">Hide postings scored below {{ min_score }}</a></p>
+{% elif f.low and f.view == 'new' %}
+<p class="meta"><a href="/discover?{{ f.query(low=False) }}">Hide postings scored below {{ min_score }}</a></p>
 {% endif %}
 {% endblock %}

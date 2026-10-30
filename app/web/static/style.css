@@ -266,6 +266,32 @@ button.danger { background: var(--danger); margin-top: 1rem; }
 .tab.active { color: var(--text); background: var(--card); border-color: #2c3543; }
 .sorts a { color: var(--muted); text-decoration: none; margin-left: 0.5rem; }
 .sorts a.active { color: var(--accent); }
+.disc-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--panel);
+  border: 1px solid #2c3543;
+  border-radius: 8px;
+}
+.filter-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+.filter-name { color: var(--muted); font-size: 0.8rem; min-width: 2.8rem; }
+.chip { display: inline-flex; flex-direction: row; cursor: pointer; }
+.chip input { position: absolute; opacity: 0; pointer-events: none; }
+.chip span {
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid #2c3543;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.chip input:checked + span { color: var(--text); border-color: var(--accent); background: #1f3350; }
+.chip input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
+.disc-filters input[type="search"] { flex: 1 1 12rem; min-width: 0; padding: 0.3rem 0.6rem; }
+.disc-filters button { padding: 0.3rem 0.8rem; }
 .posting {
   background: var(--panel);
   border: 1px solid #2c3543;

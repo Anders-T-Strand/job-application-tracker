@@ -243,14 +243,20 @@ rejected (mostly explicit no-sponsorship).
 [Personal configuration](#personal-configuration)), each posting is bucketed by hiring cycle
 (`app/discovery/terms.py`) — final-term (Winter/Spring) internships, New grad, Summer+
 internships, or unspecified — from the feed's tags, the title, then the top of the
-description. **Discover** then shows final-term internships + New grad by default (**terms:
-all** shows the rest), and the scorer works through those first. With `LOCAL_AREA` set too,
+description. **Discover** then shows final-term internships + New grad by default, and the
+scorer works through those first. With `LOCAL_AREA` set too,
 postings that name a remaining school term (fall, winter or spring before graduation) must
 be in that area or remote. Bank-style "Summer Analyst/Associate" titles, apprenticeships and
 student jobs count as internships even when a new-grad list carries them, and a description
 that only accepts graduation dates after the candidate's ("graduating between December 2027
 and May 2028", "Class of 2028") is rejected — "graduating by …" upper bounds are not.
 The **new** view also hides postings scored below 50 behind a "show" link.
+
+**Discover filters** are rows of toggles: **Term** (the buckets above), **Type** (title
+keywords: internship, co-op, associate, analyst, other) and **Visa-friendly** (a feed marks
+the employer as a likely sponsor, or the posting says it sponsors visas or welcomes student
+visas), plus a title/company search. Pick any number in a row (none = any); a posting has to
+match every row, so e.g. Term = New grad + Visa-friendly lists sponsoring new-grad roles.
 
 Setup:
 

@@ -92,6 +92,14 @@ STUDENT_VISA_OK = re.compile(
     r"|\b(?-i:OPT|CPT)(?:/(?-i:OPT|CPT))?\s+(?:candidates|applicants|students)\s+(?:are\s+)?welcome",
     re.I,
 )
+# Not a filter: Discover's "visa-friendly" mark. "We do sponsor visas", "Visa sponsorship
+# is available" (not "Sponsorship Available: No").
+SPONSORS = re.compile(
+    r"\bwe (?:do |will |can |gladly )?sponsor\b"
+    r"|\b(?:visa |h-?1b |immigration )?sponsorship (?:is |are )?(?:available|offered|provided)\b"
+    r"(?!\s*:?\s*no\b)",
+    re.I,
+)
 
 
 # "graduating between December 2027 and May 2028", "Class of 2028": the dates a

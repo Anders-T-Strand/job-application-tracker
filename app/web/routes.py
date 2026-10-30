@@ -5,23 +5,21 @@ import logging
 import sqlite3
 import statistics
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from app import db, matcher
 from app.classifier.llm import extract_job_posting
 from app.llm import make_llm
 from app.models import OPEN_STATUSES, STATUS_FOR_TYPE, STATUSES, EmailClassification
+from app.web.templating import templates
 
 log = logging.getLogger(__name__)
 
 EMPTY_PREFILL = {"company": "", "role_title": "", "notes": ""}
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 FOLLOW_UP_DAYS = 14
 SORTABLE = {"company", "role_title", "status", "applied_at", "last_activity_at"}

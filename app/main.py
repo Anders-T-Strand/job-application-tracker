@@ -4,7 +4,6 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -16,10 +15,9 @@ from app.poller import poll_forever
 from app.web.discovery import router as discovery_router
 from app.web.routes import router
 from app.web.tailor import router as tailor_router
+from app.web.templating import STATIC_DIR
 
 log = logging.getLogger(__name__)
-
-STATIC_DIR = Path(__file__).parent / "web" / "static"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

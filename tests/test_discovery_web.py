@@ -1,3 +1,5 @@
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -26,6 +28,14 @@ def test_discover_renders_empty(web):
     response = client.get("/discover")
     assert response.status_code == 200
     assert "Nothing new" in response.text
+
+
+def test_stylesheet_url_is_versioned_by_content(web):
+    client, _ = web
+    page = client.get("/discover").text
+    href = re.search(r'href="(/static/style\.css\?v=[0-9a-f]{8})"', page)
+    assert href, "a changed stylesheet needs a new URL, or browsers keep the cached one"
+    assert client.get(href.group(1)).status_code == 200
 
 
 def test_discover_lists_scored_postings(web):
@@ -114,18 +124,21 @@ def test_sponsor_filter_badge_and_feed_credits(web):
 
     page = client.get("/discover").text
     assert "Vision ML Intern" in page and "Unknown Visa Intern" in page
-    assert "sponsors visas" in page and "via Zapply" in page
+    assert ">visa-friendly</span>" in page and "via Zapply" in page
     assert "github.com/zapplyjobs" in page and "github.com/SimplifyJobs" in page  # credits
     assert "1 tracked company board" in page  # feed companies aren't boards
 
-    filtered = client.get("/discover", params={"sponsor": 1}).text
+    filtered = client.get("/discover", params={"visa": 1}).text
     assert "Vision ML Intern" in filtered and "Unknown Visa Intern" not in filtered
 
     response = client.post(
-        f"/discover/{sponsor}/save", params={"sponsor": 1, "term": "all"}, follow_redirects=False
+        f"/discover/{sponsor}/save",
+        params=[("visa", 1), ("term", "all"), ("kind", "intern"), ("kind", "co-op")],
+        follow_redirects=False,
     )
     location = response.headers["location"]
-    assert "sponsor=1" in location and "term=all" in location  # filters survive actions
+    assert "visa=1" in location and "term=all" in location  # filters survive actions
+    assert "kind=intern&kind=co-op" in location  # ...including every selected value
 
 
 @pytest.fixture
@@ -146,14 +159,59 @@ def test_default_view_shows_final_term_and_new_grad_only(web_graduating):
     conn.close()
 
     page = client.get("/discover").text
-    assert "ML Co-op - Spring 2027" in page and "Winter/Spring &#39;27" in page
-    assert "Machine Learning Engineer, New Grad" in page and "New grad" in page
+    assert "ML Co-op - Spring 2027" in page and '"term">Winter/Spring &#39;27<' in page
+    assert "Machine Learning Engineer, New Grad" in page and '"term">New grad<' in page
     assert "ML Intern - Summer 2027" not in page and ">ML Intern<" not in page
     assert '<span class="badge">2</span>' in page  # the nav badge counts the default view
+    assert 'value="final_term" checked' in page and 'value="later" >' in page
 
     everything = client.get("/discover", params={"term": "all"}).text
-    assert "ML Intern - Summer 2027" in everything and "Summer &#39;27+" in everything
+    assert "ML Intern - Summer 2027" in everything and '"term">Summer &#39;27+<' in everything
     assert ">ML Intern<" in everything
+
+
+def test_filters_combine_any_within_a_row_and_all_across_rows(web_graduating):
+    client, settings = web_graduating
+    conn = db.connect(settings.db_path)
+    company_id = add_company(conn)
+    add_posting(conn, company_id, title="ML Co-op - Spring 2027", llm_score=70)
+    add_posting(conn, company_id, title="ML Intern - Summer 2027", llm_score=70)
+    add_posting(conn, company_id, title="ML Summer Associate 2027", llm_score=70)
+    add_posting(conn, company_id, title="Associate Data Scientist, New Grad", llm_score=70)
+    add_posting(
+        conn,
+        company_id,
+        title="Data Scientist, New Grad",
+        description="Build ML models. Visa sponsorship is available.",
+        llm_score=70,
+    )
+    titles = [row["title"] for row in conn.execute("SELECT title FROM postings")]
+    conn.close()
+
+    def shown(**params):
+        page = client.get("/discover", params=params).text
+        return {title for title in titles if f">{title}<" in page}
+
+    assert shown(term=["all", "later"]) == {"ML Intern - Summer 2027", "ML Summer Associate 2027"}
+    assert shown(term=["all"], kind=["co-op", "associate"]) == {
+        "ML Co-op - Spring 2027",
+        "ML Summer Associate 2027",
+        "Associate Data Scientist, New Grad",
+    }
+    assert shown(term=["all", "new_grad"], kind=["associate"]) == {
+        "Associate Data Scientist, New Grad"
+    }
+    # the posting's own sponsorship statement counts as visa-friendly, whatever the term
+    assert shown(term=["all", "new_grad"], visa=1) == {"Data Scientist, New Grad"}
+    assert shown(term=["all", "later"], visa=1) == set()
+    assert shown(term=["all"], search="summer") == {
+        "ML Intern - Summer 2027",
+        "ML Summer Associate 2027",
+    }
+    assert (
+        "matches these filters"
+        in client.get("/discover", params={"term": ["all", "later"], "visa": 1}).text
+    )
 
 
 def test_low_scores_are_hidden_from_the_new_view_until_asked(web):

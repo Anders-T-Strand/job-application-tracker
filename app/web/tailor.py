@@ -2,20 +2,18 @@
 
 import logging
 import sqlite3
-from pathlib import Path
 
 from fastapi import APIRouter, Form, Request
-from fastapi.templating import Jinja2Templates
 
 from app import db, tailor
 from app.llm import LLMError, make_llm
 from app.web.discovery import _new_count
 from app.web.routes import _review_count
+from app.web.templating import templates
 
 log = logging.getLogger(__name__)
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 RECENT_LIMIT = 50  # scraped postings offered in the "load" dropdown
 EMPTY_PREFILL = {"title": "", "company": "", "description": ""}

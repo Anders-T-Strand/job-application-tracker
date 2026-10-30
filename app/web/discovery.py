@@ -1,19 +1,20 @@
 """Discovery routes: score-sorted postings with save/dismiss/applied actions."""
 
+import dataclasses
+import re
 import sqlite3
-from pathlib import Path
+from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
 
 from app import db, matcher
-from app.discovery import feeds, terms
+from app.discovery import feeds, rules, terms
 from app.web.routes import _review_count
+from app.web.templating import templates
 
 router = APIRouter()
-templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 VIEWS = ("new", "saved", "dismissed", "applied")
 SORTS = {
@@ -21,9 +22,61 @@ SORTS = {
     "lca": "c.lca_filings DESC, p.llm_score IS NULL, p.llm_score DESC",
     "recent": "p.first_seen DESC",
 }
-TERMS = ("target", "all")  # target: terms.TARGET (final-term internships, new grad)
-FILTER_KEYS = ("view", "sort", "sponsor", "term", "low")  # carried through action redirects
+TERMS = ("final_term", "new_grad", "later", "unspecified")  # terms.bucket values
+# The "type" filter, by title keyword; a title can be more than one ("Summer Associate").
+KINDS = {
+    "intern": re.compile(r"\b(intern(ship)?s?|summer (associate|analyst)s?|apprentice\w*)\b", re.I),
+    "co-op": re.compile(r"\bco[- ]?ops?\b", re.I),
+    "associate": re.compile(r"\bassociates?\b", re.I),
+    "analyst": re.compile(r"\banalysts?\b", re.I),
+}
+OTHER_KIND = "other"  # none of KINDS
+FILTER_KEYS = ("view", "sort", "term", "kind", "visa", "low", "search")  # kept across actions
 MIN_SCORE = 50  # the new view hides postings scored below this unless asked (low=1)
+
+
+@dataclasses.dataclass(frozen=True)
+class Filters:
+    """The page's filters. Within a group (terms, kinds) any selected value matches; the
+    groups, the visa mark and the search all have to match."""
+
+    view: str = "new"
+    sort: str = "score"
+    terms: tuple[str, ...] | None = None  # None: the view's default; () = any term
+    kinds: tuple[str, ...] = ()
+    visa: bool = False
+    low: bool = False
+    search: str = ""
+
+    def query(self, **changes) -> str:
+        """This page's query string, with some filters changed."""
+        f = dataclasses.replace(self, **changes)
+        items = [("view", f.view), ("sort", f.sort)]
+        if f.terms is not None:  # "all" marks an explicit choice, even of no terms
+            items += [("term", "all"), *(("term", t) for t in f.terms)]
+        items += [("kind", k) for k in f.kinds]
+        if f.visa:
+            items.append(("visa", "1"))
+        if f.low:
+            items.append(("low", "1"))
+        if f.search:
+            items.append(("search", f.search))
+        return urlencode(items)
+
+
+def _kinds(title: str) -> set[str]:
+    return {kind for kind, pattern in KINDS.items() if pattern.search(title)} or {OTHER_KIND}
+
+
+def visa_note(visa_sponsor: int, description: str | None) -> str:
+    """Why a posting looks visa-friendly, or '' if nothing says so."""
+    if visa_sponsor:
+        return "A feed's automated estimate that the employer sponsors visas"
+    if rules.SPONSORS.search(description or ""):
+        return "The posting says it sponsors visas"
+    if rules.STUDENT_VISA_OK.search(description or ""):
+        return "The posting welcomes student visas (CPT/OPT)"
+    return ""
 
 
 def get_conn(request: Request) -> sqlite3.Connection:
@@ -52,50 +105,70 @@ def discover(
     request: Request,
     view: str = "new",
     sort: str = "score",
-    sponsor: bool = False,
-    term: str = "",
+    term: Annotated[list[str] | None, Query()] = None,
+    kind: Annotated[list[str] | None, Query()] = None,
+    visa: bool = False,
     low: bool = False,
+    search: str = "",
 ):
     year = request.app.state.settings.graduation_year
     view = view if view in VIEWS else "new"
-    # the term filter needs a graduation year to know the cycle; without one, show all
-    term = term if term in TERMS and year else ("target" if year else "all")
-    order_by = SORTS.get(sort) or SORTS["score"]
+    # without a graduation year there's no cycle to place internships in
+    term_options = TERMS if year else ("new_grad", "unspecified")
+    f = Filters(
+        view=view,
+        sort=sort if sort in SORTS else "score",
+        terms=None if term is None else tuple(t for t in term_options if t in term),
+        kinds=tuple(k for k in (*KINDS, OTHER_KIND) if k in (kind or ())),
+        visa=visa,
+        low=low,
+        search=search.strip(),
+    )
+    # by default, new postings are triaged for the final term and new grad; the rest show all
+    shown_terms = f.terms
+    if shown_terms is None:
+        shown_terms = terms.TARGET if view == "new" and year else ()
     where = "p.status = ?"
     if view == "new":  # new postings only matter while live and rules-passed
         where += " AND p.is_live = 1 AND p.rules_status = 'passed'"
-    if sponsor:
-        where += " AND p.visa_sponsor = 1"
     conn = get_conn(request)
     try:
         postings, hidden_low = [], 0
         for row in conn.execute(
             "SELECT p.*, c.name AS company_name, c.lca_filings, c.lca_year"
             f" FROM postings p JOIN companies c ON c.id = p.company_id WHERE {where}"  # noqa: S608
-            f" ORDER BY {order_by}",
+            f" ORDER BY {SORTS[f.sort]}",
             (view,),
         ):
             item = dict(row)
             item["term"] = terms.bucket(row["title"], row["terms"], row["description"], year)
-            # the term and score filters are for triaging new postings; saved/applied show all
-            if view == "new" and term != "all" and item["term"] not in terms.TARGET:
+            if shown_terms and item["term"] not in shown_terms:
                 continue
+            if f.kinds and not _kinds(row["title"]) & set(f.kinds):
+                continue
+            item["visa_note"] = visa_note(row["visa_sponsor"], row["description"])
+            if f.visa and not item["visa_note"]:
+                continue
+            haystack = f"{row['title']} {row['company_name']}".lower()
+            if f.search and f.search.lower() not in haystack:
+                continue
+            # the score cutoff is for triaging new postings; saved/applied show all
             score = row["llm_score"]
-            if view == "new" and not low and score is not None and score < MIN_SCORE:
+            if view == "new" and not f.low and score is not None and score < MIN_SCORE:
                 hidden_low += 1
                 continue
             postings.append(item)
         context = {
             "postings": postings,
-            "view": view,
+            "f": f,
             "views": VIEWS,
-            "sort": sort if sort in SORTS else "score",
-            "sponsor": sponsor,
-            "term": term,
-            "low": low,
+            "term_options": term_options,
+            "shown_terms": shown_terms,
+            "default_terms": f.terms is None and bool(shown_terms),
+            "filtered": bool(f.terms or f.kinds or f.visa or f.search),
+            "kind_options": (*KINDS, OTHER_KIND),
             "hidden_low": hidden_low,
             "min_score": MIN_SCORE,
-            "term_filter": bool(year),
             "term_labels": terms.labels(year),
             "sources": feeds.SOURCES,
             "company_count": conn.execute(
@@ -111,7 +184,7 @@ def discover(
 
 def _back(request: Request) -> RedirectResponse:
     """Back to the Discover page with the filters the action was posted from."""
-    query = {k: v for k, v in request.query_params.items() if k in FILTER_KEYS}
+    query = [(k, v) for k, v in request.query_params.multi_items() if k in FILTER_KEYS]
     return RedirectResponse(f"/discover?{urlencode(query)}", status_code=303)
 
 
