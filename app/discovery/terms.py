@@ -15,7 +15,15 @@ description (where ATS postings usually name the season).
 import functools
 import re
 
-INTERN = re.compile(r"\b(intern(ship)?s?|co[- ]?op)\b", re.I)
+# "Summer Analyst/Associate" is how banks title internships; student jobs are for
+# current students. Neither is a new-grad role, whatever list it came from.
+INTERN = re.compile(
+    r"\b(intern(ship)?s?|co[- ]?op|summer (associate|analyst)s?|apprentice(ship)?s?"
+    r"|student (employee|assistant|worker|researcher)s?|for students)\b",
+    re.I,
+)
+SUMMER = re.compile(r"\bsummer\b", re.I)
+YEAR = re.compile(r"\b20(\d\d)\b")
 NEW_GRAD = re.compile(
     r"\b(new[- ]grad(uate)?|recent grad(uate)?|university grad(uate)?|graduate (program|role)"
     r"|entry[- ]level|early[- ]career|20\d\d grad(uate)?s?)\b",
@@ -26,8 +34,9 @@ TARGET = ("final_term", "new_grad")  # what the Discover page shows by default
 
 
 def _season(names: str, year: int) -> str:
-    """Regex for e.g. "Spring 2027", "spring '27", "Spring of 2027"."""
-    return rf"(?:{names})\s*(?:of\s*)?['’]?(?:20)?{year % 100:02d}"
+    """Regex for e.g. "Spring 2027", "spring '27", "Spring of 2027", "2027 Spring"."""
+    yy = f"{year % 100:02d}"
+    return rf"(?:(?:{names})\s*(?:of\s*)?['’]?(?:20)?{yy}|(?:20)?{yy}\s+(?:{names}))"
 
 
 @functools.cache
@@ -74,4 +83,12 @@ def bucket(
                 return "final_term"
             if later.search(text):
                 return "later"
+        # "2027 ML Center of Excellence - Summer Associate": a summer internship with the
+        # graduation year (or later) anywhere in the title
+        if (
+            internship
+            and SUMMER.search(title)
+            and any(2000 + int(yy) >= year for yy in YEAR.findall(title))
+        ):
+            return "later"
     return "unspecified"

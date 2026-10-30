@@ -1,4 +1,6 @@
-from app.discovery.rules import apply_rules, locality
+import pytest
+
+from app.discovery.rules import apply_rules, graduates_too_late, locality
 
 ML_DESC = "Join our machine learning team building recommendation models. Based in New York, NY."
 
@@ -107,3 +109,33 @@ def test_sponsorship_negation_rejects():
 def test_field_stems_match_whole_words():
     for title in ("Data Scientist Intern", "Applied Scientist Intern", "Data Engineering Co-op"):
         assert apply_rules(title, "NY", "")[0], title
+
+
+@pytest.mark.parametrize(
+    "requirement,too_late",
+    [
+        ("Candidates must be graduating between December 2027 and May 2028.", True),
+        ("Open to the Class of 2028.", True),
+        ("Expected graduation: Spring 2029.", True),
+        ("Expected graduation date between December 2026 and June 2027.", False),
+        ("Graduating by May 2028 with a BS in CS.", False),  # an upper bound: earlier is fine
+        ("Must have graduated in 2025 or later.", False),
+        ("Recent graduates welcome; start date in September 2028.", False),  # not a grad date
+        ("Strong Python skills.", False),
+    ],
+)
+def test_graduation_windows_after_the_candidate(requirement, too_late):
+    assert graduates_too_late(requirement, 2027) is too_late
+    passed, reason = apply_rules(
+        "ML Intern", "NY", f"{ML_DESC} {requirement}", graduation_year=2027
+    )
+    assert passed is not too_late
+    assert apply_rules("ML Intern", "NY", f"{ML_DESC} {requirement}")[0]  # off without a year
+
+
+def test_postdocs_are_not_early_career_even_from_a_new_grad_feed():
+    for title in ("Machine Learning Postdoctoral Researcher", "Postdoc - Explainable AI"):
+        assert apply_rules(title, "Livermore, CA", ML_DESC, terms="New Grad") == (
+            False,
+            "stage:senior-term-in-title",
+        )

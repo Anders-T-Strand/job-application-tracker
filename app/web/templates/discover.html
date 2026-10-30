@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 {# query string for this page with some filters overridden #}
-{% macro q(v=view, s=sort, sp=sponsor, t=term) -%}
-view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}
+{% macro q(v=view, s=sort, sp=sponsor, t=term, lo=low) -%}
+view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}{% if lo %}&low=1{% endif %}
 {%- endmacro %}
 <h1>Discover</h1>
 <p class="hint">
@@ -87,10 +87,20 @@ view={{ v }}&sort={{ s }}{% if sp %}&sponsor=1{% endif %}&term={{ t }}
   </div>
 </div>
 {% else %}
+{% if not hidden_low %}
 <p class="empty">
   {% if view == 'new' %}Nothing new{% if term == 'target' %} for {{ term_labels['final_term'] | lower }} or new grad
   — <a href="/discover?{{ q(t='all') }}">show all terms</a>{% else %} — check back after the next poll{% endif %}.
   {% else %}No {{ view }} postings.{% endif %}
 </p>
+{% endif %}
 {% endfor %}
+{% if hidden_low %}
+<p class="meta">
+  {{ hidden_low }} posting{{ 's' if hidden_low != 1 }} scored below {{ min_score }} {{ 'is' if hidden_low == 1 else 'are' }} hidden
+  — <a href="/discover?{{ q(lo=True) }}">show</a>
+</p>
+{% elif low and view == 'new' %}
+<p class="meta"><a href="/discover?{{ q(lo=False) }}">Hide postings scored below {{ min_score }}</a></p>
+{% endif %}
 {% endblock %}

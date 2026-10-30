@@ -38,6 +38,10 @@ Scoring guidance:
   location included
 - 50-79: plausible fit with caveats (adjacent field, unclear level or location)
 - 0-49: poor fit (wrong field, senior, non-US, sponsorship clearly excluded)
+"Summer Analyst" and "Summer Associate" titles are internships, not full-time roles.
+Many postings have no description: then judge only what the title, company and location
+show, don't assume the candidate meets unstated graduation-date or degree requirements,
+and stay at 80 or below unless the fit is unmistakable.
 Name the decisive factor in the rationale.
 """
 

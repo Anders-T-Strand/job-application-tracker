@@ -269,3 +269,10 @@ def test_feed_terms_reach_the_rules(conn):
 def test_posting_model_defaults_to_no_feed_signals():
     posting = Posting(title="t", url="u")
     assert posting.visa_sponsor is False and posting.terms == ""
+
+
+def test_new_grad_list_bank_internships_are_tagged_internships():
+    markdown = "\n".join(
+        [HEADER, _row("JPMorgan Chase", "2027 ML CoE - Summer Associate", "NY", "", "wd-9")]
+    )
+    assert [p.terms for _, p in feeds.parse_zapply(markdown, new_grad=True)] == ["Internship"]

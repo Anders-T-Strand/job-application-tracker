@@ -14,8 +14,8 @@ STAGE_INCLUDE = re.compile(
     r"\b(intern(ship)?|co[- ]?op|new grad|university|early career|entry[- ]level|graduate)\b",
     re.I,
 )
-STAGE_EXCLUDE = re.compile(
-    r"\b(senior|staff|principal|lead|manager|director|head of|sr\.?)\b", re.I
+STAGE_EXCLUDE = re.compile(  # postdocs need a PhD, though feeds list them as new grad
+    r"\b(senior|staff|principal|lead|manager|director|head of|sr\.?|postdoc\w*)\b", re.I
 )
 FIELD = re.compile(  # stems end in \w* so "data scien" also matches "Data Scientist"
     r"\b(machine learning|\bml\b|\bai\b|artificial intelligence|data scien\w*|deep learning|"
@@ -46,6 +46,33 @@ NO_SPONSOR = re.compile(
 )
 
 
+# "graduating between December 2027 and May 2028", "Class of 2028": the dates a
+# posting's graduation requirement names. Upper bounds ("by", "before", "no later
+# than") are skipped — those accept anyone graduating earlier.
+GRAD_CONTEXT = re.compile(r"(graduat\w*|class of)[^.;]{0,120}", re.I)
+UPPER_BOUND = re.compile(r"\b(by|before|prior to|no later than|or earlier)\b", re.I)
+GRAD_DATE = re.compile(
+    r"\b(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?"
+    r"|(spring|summer|fall|autumn|winter))?\s*(?:of\s+)?(20\d\d)\b",
+    re.I,
+)
+MONTH_NAMES = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+MONTHS = {name: number for number, name in enumerate(MONTH_NAMES, 1)}
+SEASON_MONTHS = {"spring": 5, "summer": 8, "fall": 12, "autumn": 12, "winter": 12}
+
+
+def graduates_too_late(description: str, graduation_year: int) -> bool:
+    """Whether every graduation date the posting requires is after a spring graduation."""
+    dates = []
+    for context in GRAD_CONTEXT.finditer(description):
+        if UPPER_BOUND.search(context.group(0)):
+            continue
+        for month, season, year in GRAD_DATE.findall(context.group(0)):
+            number = MONTHS.get(month[:3].lower()) or SEASON_MONTHS.get(season.lower()) or 1
+            dates.append((int(year), number))  # no month: assume the earliest, to be safe
+    return bool(dates) and min(dates) > (graduation_year, 6)
+
+
 @dataclass(frozen=True)
 class Locality:
     """A candidate still in school can only be on-site near campus until graduating."""
@@ -70,6 +97,7 @@ def apply_rules(
     remote: bool = False,
     terms: str = "",
     local: Locality | None = None,
+    graduation_year: int | None = None,
 ) -> tuple[bool, str]:
     """Returns (passed, reason). reason is '' on pass, else the rule that fired.
 
@@ -97,4 +125,6 @@ def apply_rules(
         return False, "geo:school-term-not-local-or-remote"
     if NO_SPONSOR.search(description):
         return False, "sponsor:explicit-negation"
+    if graduation_year and graduates_too_late(description, graduation_year):
+        return False, "timing:graduation-after-candidate"
     return True, ""

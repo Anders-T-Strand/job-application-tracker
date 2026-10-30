@@ -96,7 +96,9 @@ def mark_missing(conn: sqlite3.Connection, company_id: int, poll_time: str) -> i
 RULES_BATCH = 500
 
 
-def run_rules(conn: sqlite3.Connection, local: Locality | None = None) -> tuple[int, int]:
+def run_rules(
+    conn: sqlite3.Connection, local: Locality | None = None, graduation_year: int | None = None
+) -> tuple[int, int]:
     """Apply the stage-1 filter to pending postings. Returns (passed, rejected). Commits."""
     ids = [
         row["id"] for row in conn.execute("SELECT id FROM postings WHERE rules_status = 'pending'")
@@ -118,6 +120,7 @@ def run_rules(conn: sqlite3.Connection, local: Locality | None = None) -> tuple[
                 bool(row["remote"]),
                 row["terms"] or "",
                 local,
+                graduation_year,
             )
             conn.execute(
                 "UPDATE postings SET rules_status = ?, rules_reason = ? WHERE id = ?",

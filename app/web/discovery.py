@@ -22,7 +22,8 @@ SORTS = {
     "recent": "p.first_seen DESC",
 }
 TERMS = ("target", "all")  # target: terms.TARGET (final-term internships, new grad)
-FILTER_KEYS = ("view", "sort", "sponsor", "term")  # carried through save/dismiss/... redirects
+FILTER_KEYS = ("view", "sort", "sponsor", "term", "low")  # carried through action redirects
+MIN_SCORE = 50  # the new view hides postings scored below this unless asked (low=1)
 
 
 def get_conn(request: Request) -> sqlite3.Connection:
@@ -33,8 +34,9 @@ def _new_count(conn: sqlite3.Connection, graduation_year: int | None = None) -> 
     """New postings in the default view (target terms when configured), for the nav badge."""
     rows = conn.execute(
         "SELECT title, terms, substr(description, 1, ?) AS description FROM postings"
-        " WHERE status = 'new' AND is_live = 1 AND rules_status = 'passed'",
-        (terms.DESC_CHARS,),
+        " WHERE status = 'new' AND is_live = 1 AND rules_status = 'passed'"
+        " AND (llm_score IS NULL OR llm_score >= ?)",
+        (terms.DESC_CHARS, MIN_SCORE),
     ).fetchall()
     if not graduation_year:
         return len(rows)
@@ -52,6 +54,7 @@ def discover(
     sort: str = "score",
     sponsor: bool = False,
     term: str = "",
+    low: bool = False,
 ):
     year = request.app.state.settings.graduation_year
     view = view if view in VIEWS else "new"
@@ -65,7 +68,7 @@ def discover(
         where += " AND p.visa_sponsor = 1"
     conn = get_conn(request)
     try:
-        postings = []
+        postings, hidden_low = [], 0
         for row in conn.execute(
             "SELECT p.*, c.name AS company_name, c.lca_filings, c.lca_year"
             f" FROM postings p JOIN companies c ON c.id = p.company_id WHERE {where}"  # noqa: S608
@@ -74,9 +77,14 @@ def discover(
         ):
             item = dict(row)
             item["term"] = terms.bucket(row["title"], row["terms"], row["description"], year)
-            # the term filter is for triaging new postings; saved/applied show everything
-            if view != "new" or term == "all" or item["term"] in terms.TARGET:
-                postings.append(item)
+            # the term and score filters are for triaging new postings; saved/applied show all
+            if view == "new" and term != "all" and item["term"] not in terms.TARGET:
+                continue
+            score = row["llm_score"]
+            if view == "new" and not low and score is not None and score < MIN_SCORE:
+                hidden_low += 1
+                continue
+            postings.append(item)
         context = {
             "postings": postings,
             "view": view,
@@ -84,6 +92,9 @@ def discover(
             "sort": sort if sort in SORTS else "score",
             "sponsor": sponsor,
             "term": term,
+            "low": low,
+            "hidden_low": hidden_low,
+            "min_score": MIN_SCORE,
             "term_filter": bool(year),
             "term_labels": terms.labels(year),
             "sources": feeds.SOURCES,

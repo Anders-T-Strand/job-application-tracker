@@ -39,7 +39,7 @@ def test_feed_migrations_keep_postings(tmp_path):
         )
     conn.commit()
 
-    assert db.migrate(conn) == ["005_feeds.sql"]
+    assert db.migrate(conn)[:2] == ["005_feeds.sql", "006_retag_internships.sql"]
     assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     rows = conn.execute(
@@ -49,5 +49,30 @@ def test_feed_migrations_keep_postings(tmp_path):
     assert [tuple(r) for r in rows] == [
         ("lever", None, None, "pending", None),  # open postings are re-filtered and re-scored
         ("feed", "zapply-intern", "Internship", "pending", None),
+    ]
+    conn.close()
+
+
+def test_retag_migration_moves_bank_internships_out_of_new_grad(tmp_path):
+    conn = db.connect(tmp_path / "old.db")
+    conn.execute("CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT)")
+    for path in sorted(db.MIGRATIONS_DIR.glob("00[1-5]_*.sql")):
+        conn.executescript(path.read_text())
+        conn.execute("INSERT INTO schema_migrations (name) VALUES (?)", (path.name,))
+    conn.execute("INSERT INTO companies (name, ats_type, board_token) VALUES ('JPM', 'feed', '')")
+    for title in ("ML CoE (NLP) - Summer Associate", "Data Scientist, New Grad"):
+        conn.execute(
+            "INSERT INTO postings (company_id, title, url, content_hash, first_seen, last_seen,"
+            " feed, terms, rules_status, llm_score) VALUES (1, ?, 'u', ?, '2026-10-01',"
+            " '2026-10-01', 'zapply-newgrad', 'New Grad', 'passed', 95)",
+            (title, title),
+        )
+    conn.commit()
+
+    assert db.migrate(conn)[0] == "006_retag_internships.sql"
+    rows = conn.execute("SELECT terms, rules_status, llm_score FROM postings ORDER BY id")
+    assert [tuple(r) for r in rows] == [
+        ("Internship", "pending", None),
+        ("New Grad", "pending", None),
     ]
     conn.close()

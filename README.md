@@ -225,6 +225,17 @@ the field filter. Companies whose own board is polled are skipped, and the same 
 feeds is stored once (matched on company + title). Zapply's terms allow this with credit and
 a link back, shown on the Discover page; don't republish the listings to other aggregators.
 
+**Descriptions for feed postings** (`app/discovery/details.py`): feeds only give a title, so
+once a feed posting passes the title-only rules, its description is fetched from the
+employer's job system — the Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Oracle HCM and
+Workable public APIs, else the schema.org `JobPosting` JSON-LD most career sites embed for
+search engines (Zapply links are followed through their redirect; one that lands back on
+zapply.jobs means the job closed). The posting then goes back through the rules — now able to
+see "no sponsorship", clearance and graduation-date requirements — and is re-scored on the
+real text. Up to 200 per cycle, one request at a time, default-view postings first; Summer+
+internships are skipped. On a sample of 80, 74 got a description and 14 of those were then
+rejected (mostly explicit no-sponsorship).
+
 **Graduation-aware terms:** with `GRADUATION_YEAR` set (see
 [Personal configuration](#personal-configuration)), each posting is bucketed by hiring cycle
 (`app/discovery/terms.py`) — final-term (Winter/Spring) internships, New grad, Summer+
@@ -232,7 +243,11 @@ internships, or unspecified — from the feed's tags, the title, then the top of
 description. **Discover** then shows final-term internships + New grad by default (**terms:
 all** shows the rest), and the scorer works through those first. With `LOCAL_AREA` set too,
 postings that name a remaining school term (fall, winter or spring before graduation) must
-be in that area or remote.
+be in that area or remote. Bank-style "Summer Analyst/Associate" titles, apprenticeships and
+student jobs count as internships even when a new-grad list carries them, and a description
+that only accepts graduation dates after the candidate's ("graduating between December 2027
+and May 2028", "Class of 2028") is rejected — "graduating by …" upper bounds are not.
+The **new** view also hides postings scored below 50 behind a "show" link.
 
 Setup:
 

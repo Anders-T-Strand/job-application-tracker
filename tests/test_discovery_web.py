@@ -154,3 +154,22 @@ def test_default_view_shows_final_term_and_new_grad_only(web_graduating):
     everything = client.get("/discover", params={"term": "all"}).text
     assert "ML Intern - Summer 2027" in everything and "Summer &#39;27+" in everything
     assert ">ML Intern<" in everything
+
+
+def test_low_scores_are_hidden_from_the_new_view_until_asked(web):
+    client, settings = web
+    conn = db.connect(settings.db_path)
+    company_id = add_company(conn)
+    add_posting(conn, company_id, title="Good Fit Intern", llm_score=72)
+    add_posting(conn, company_id, title="Poor Fit Intern", llm_score=20)
+    add_posting(conn, company_id, title="Unscored Intern")
+    conn.close()
+
+    page = client.get("/discover").text
+    assert "Good Fit Intern" in page and "Unscored Intern" in page
+    assert "Poor Fit Intern" not in page
+    assert "1 posting scored below 50 is hidden" in page
+    assert '<span class="badge">2</span>' in page  # nav badge matches what's shown
+
+    shown = client.get("/discover", params={"low": 1}).text
+    assert "Poor Fit Intern" in shown and "Hide postings scored below 50" in shown

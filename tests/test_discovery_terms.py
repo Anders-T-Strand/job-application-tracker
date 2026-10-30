@@ -41,3 +41,23 @@ def test_cycle_follows_the_graduation_year():
 def test_without_a_graduation_year_only_new_grad_is_told_apart():
     assert bucket("ML Intern - Spring 2027") == "unspecified"
     assert bucket("Data Scientist, New Grad") == "new_grad"
+
+
+@pytest.mark.parametrize(
+    "title,terms,expected",
+    [
+        # a bank internship listed in a new-grad feed (the stored tag says New Grad)
+        (
+            "2027 Machine Learning Center of Excellence (NLP) - Summer Associate",
+            "New Grad",
+            "later",
+        ),
+        ("2027 Summer Analyst - Data Science", None, "later"),
+        ("Summer Analyst, AI - Winter 2027", None, "final_term"),
+        ("Data Science Student Assistant 3", "New Grad", "unspecified"),
+        ("Data Science Apprentice", None, "unspecified"),
+        ("Machine Learning Engineer, New Grad (Summer 2027 start)", None, "new_grad"),
+    ],
+)
+def test_internships_by_other_names(title, terms, expected):
+    assert bucket(title, terms, year=2027) == expected
