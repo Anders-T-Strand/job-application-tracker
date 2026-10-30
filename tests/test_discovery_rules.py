@@ -31,6 +31,35 @@ def test_state_codes_stay_case_sensitive():
     assert not passed and reason == "geo:no-us-signal"
 
 
+@pytest.mark.parametrize(
+    "title,location",
+    [
+        ("ML Intern", "NYC"),
+        ("ML Intern", "SF; Zürich, Switzerland"),
+        ("ML Intern", "Sunnyvale"),
+        ("ML Intern", "Dallas, Texas"),
+        ("ML Intern", "Santa Clara, CALIFORNIA"),
+        ("ML Intern", "San Jose California US"),
+        ("ML Intern", "Remote in US"),
+        ("Data & AI Intern – United States", "Markham"),  # the title says so
+    ],
+)
+def test_us_cities_and_state_names_count_as_us(title, location):
+    assert apply_rules(title, location, "Build machine learning models.") == (True, "")
+
+
+@pytest.mark.parametrize(
+    "location,description",
+    [
+        ("Toronto, ON, Canada", "Build machine learning models."),
+        ("Mexico, Remote", "Build machine learning models."),
+        ("London, UK", "ABOUT US. We build machine learning models in our Austin office."),
+    ],
+)
+def test_non_us_places_and_description_prose_do_not_count(location, description):
+    assert apply_rules("ML Intern", location, description) == (False, "geo:no-us-signal")
+
+
 def test_no_early_career_signal():
     passed, reason = apply_rules("Machine Learning Engineer", "NY", ML_DESC)
     assert not passed and reason == "stage:no-early-career-signal"

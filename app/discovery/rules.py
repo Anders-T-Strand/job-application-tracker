@@ -33,6 +33,24 @@ US_STATE = re.compile(
     r"\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|"
     r"NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b"
 )
+# Location fields often spell the state out or name only the city ("Dallas, Texas", "NYC",
+# "Sunnyvale", "San Jose California US"). Checked in the title and location only: in
+# description prose, city names and "US" ("ABOUT US") would be noise.
+US_PLACE = re.compile(
+    r"\b((?-i:US)|alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware"
+    r"|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine"
+    r"|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada"
+    r"|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma"
+    r"|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah"
+    r"|vermont|virginia|washington|wisconsin|wyoming|district of columbia"
+    r"|nyc|manhattan|brooklyn|san francisco|sf|bay area|silicon valley|san jose|sunnyvale"
+    r"|santa clara|mountain view|palo alto|menlo park|redwood city|cupertino|san mateo"
+    r"|emeryville|berkeley|oakland|los angeles|san diego|irvine|seattle|bellevue|redmond"
+    r"|kirkland|boston|chicago|austin|dallas|dfw|houston|plano|denver|boulder|atlanta|miami"
+    r"|pittsburgh|philadelphia|salt lake city|detroit|ann arbor|minneapolis|raleigh"
+    r"|nashville|baltimore|orlando|st\.? louis|kansas city)\b",
+    re.I,
+)
 # Work-authorization dealbreakers for a candidate who needs sponsorship, or the employer's
 # sign-off for CPT/OPT: sponsorship refused, CPT/OPT excluded, or permanent authorization,
 # citizenship or U.S.-person status (export control) required. OPT/CPT match in capitals
@@ -244,7 +262,11 @@ def apply_rules(
     if not FIELD.search(f"{title} {description}"):
         return False, "field:no-ai-ml-ds-terms"
     loc_blob = f"{location} {description[:500]}"
-    if not (US_PHRASE.search(loc_blob) or US_STATE.search(loc_blob)):
+    if not (
+        US_PHRASE.search(f"{title} {loc_blob}")
+        or US_STATE.search(loc_blob)
+        or US_PLACE.search(f"{title} {location}")
+    ):
         return False, "geo:no-us-signal"
     if (
         local
