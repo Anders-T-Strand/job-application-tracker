@@ -97,7 +97,10 @@ RULES_BATCH = 500
 
 
 def run_rules(
-    conn: sqlite3.Connection, local: Locality | None = None, graduation_year: int | None = None
+    conn: sqlite3.Connection,
+    local: Locality | None = None,
+    graduation_year: int | None = None,
+    degrees: frozenset[str] = frozenset(),
 ) -> tuple[int, int]:
     """Apply the stage-1 filter to pending postings. Returns (passed, rejected). Commits."""
     ids = [
@@ -121,6 +124,7 @@ def run_rules(
                 row["terms"] or "",
                 local,
                 graduation_year,
+                degrees,
             )
             conn.execute(
                 "UPDATE postings SET rules_status = ?, rules_reason = ? WHERE id = ?",

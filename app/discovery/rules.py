@@ -89,7 +89,7 @@ EXPERIENCE = re.compile(
     re.I,
 )
 REQUIRED_HEAD = re.compile(
-    r"\b(basic|minimum|required|requirements?|qualifications|what you('ll)? need"
+    r"\b(basic|minimum|required|requirements?|qualifications|what you(['’]ll)? need"
     r"|you (have|bring)|must[- ]haves?)\b",
     re.I,
 )
@@ -100,15 +100,16 @@ OTHER_HEAD = re.compile(
     re.I,
 )
 SAYS_REQUIRED = re.compile(r"\b(required|must|minimum|at least)\b", re.I)
-DEGREE = re.compile(r"\b(degree|education|bachelor\w*|master'?s|ph\.?\s?d|bs|ms|ba|ma|mba)\b", re.I)
+DEGREE = re.compile(
+    r"\b(degree|education|bachelor\w*|master['’]?s|ph\.?\s?d|bs|ms|ba|ma|mba)\b", re.I
+)
 ALTERNATIVE = re.compile(r"\b(or|in lieu of|instead of)\b", re.I)
 PARAGRAPH = 300  # requirement bullets are short; a longer line is prose (intro, about us)
 
 
-def required_years(description: str) -> int:
-    """The most years of experience a requirement asks for (0 if none)."""
+def requirement_lines(description: str):
+    """The description's requirement lines (see EXPERIENCE above for what counts)."""
     section = None  # None until a heading: "required" | "preferred"
-    most = 0
     for line in description.splitlines():
         heading = line.strip(" -•*·:\t")
         if len(heading) < 60 and not EXPERIENCE.search(heading):
@@ -126,12 +127,47 @@ def required_years(description: str) -> int:
         says_required = SAYS_REQUIRED.search(line)
         if not says_required and (section != "required" or len(line) > PARAGRAPH):
             continue
+        yield line
+
+
+def required_years(description: str) -> int:
+    """The most years of experience a requirement asks for (0 if none)."""
+    most = 0
+    for line in requirement_lines(description):
         if ALTERNATIVE.search(line) and DEGREE.search(line):
             continue
         for match in EXPERIENCE.finditer(line):
             if (years := int(match.group(1))) <= MAX_PLAUSIBLE_YEARS:
                 most = max(most, years)
     return most
+
+
+# Degree-gated roles, checked against DEGREES (the candidate's: bs, ms, mba, phd). A PhD
+# or MBA counts as required when the title names it, or a requirement line does, without
+# a lower or other degree as an alternative ("MS/PhD", "Master's or PhD" pass).
+PHD = re.compile(r"\bph\.?\s?d\b", re.I)
+MBA = re.compile(r"\bmba\b", re.I)
+OTHER_DEGREE = re.compile(  # not BA/MA: they'd match "Boston, MA"
+    r"\b(bachelor\w*|master['’]?s|undergrad\w*|graduate degree|b\.?s\.?|m\.?s\.?|b\.?sc|m\.?sc"
+    r"|m\.?eng)(?=\W|$)",
+    re.I,
+)
+
+
+def degree_required(title: str, description: str, degrees: frozenset[str]) -> str | None:
+    """'phd' or 'mba' if the posting requires a degree the candidate doesn't have."""
+    lines = list(requirement_lines(description))
+    # options are often listed one per line ("Bachelor's and 2+ years OR" / "PhD in CS"):
+    # any requirement line accepting another degree makes the PhD/MBA one an alternative
+    other_accepted = any(OTHER_DEGREE.search(line) for line in lines)
+    for degree, pattern in (("phd", PHD), ("mba", MBA)):
+        if degree in degrees:
+            continue
+        if pattern.search(title) and not OTHER_DEGREE.search(title):
+            return degree
+        if not other_accepted and any(pattern.search(line) for line in lines):
+            return degree
+    return None
 
 
 @dataclass(frozen=True)
@@ -159,6 +195,7 @@ def apply_rules(
     terms: str = "",
     local: Locality | None = None,
     graduation_year: int | None = None,
+    degrees: frozenset[str] = frozenset(),
 ) -> tuple[bool, str]:
     """Returns (passed, reason). reason is '' on pass, else the rule that fired.
 
@@ -190,4 +227,6 @@ def apply_rules(
         return False, "sponsor:explicit-negation"
     if graduation_year and graduates_too_late(description, graduation_year):
         return False, "timing:graduation-after-candidate"
+    if degrees and (degree := degree_required(title, description, degrees)):
+        return False, f"degree:{degree}-required"
     return True, ""

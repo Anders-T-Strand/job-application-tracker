@@ -18,7 +18,7 @@ MAX_PER_RUN = 500  # per discovery cycle; the rest is picked up next cycle
 MAX_DESC_CHARS = 2400
 # Requirements usually come after a long intro; a plain prefix would cut them off.
 REQUIREMENTS = re.compile(
-    r"^[^\n]{0,40}\b(qualifications|requirements|what you('ll)? need|you (have|bring)"
+    r"^[^\n]{0,40}\b(qualifications|requirements|what you(['’]ll)? need|you (have|bring)"
     r"|who you are)\b[^\n]{0,30}$",
     re.I | re.M,
 )

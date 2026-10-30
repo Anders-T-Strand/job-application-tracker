@@ -1,6 +1,12 @@
 import pytest
 
-from app.discovery.rules import apply_rules, graduates_too_late, locality, required_years
+from app.discovery.rules import (
+    apply_rules,
+    degree_required,
+    graduates_too_late,
+    locality,
+    required_years,
+)
 
 ML_DESC = "Join our machine learning team building recommendation models. Based in New York, NY."
 
@@ -194,3 +200,52 @@ def test_experience_beyond_early_career_rejects_even_with_a_new_grad_tag():
 )
 def test_early_career_wording_is_not_mistaken_for_required_experience(description):
     assert required_years(description) <= 2
+
+
+BS_MS = frozenset({"bs", "ms"})
+
+
+@pytest.mark.parametrize(
+    "title,description,required",
+    [
+        ("PhD Machine Learning Internship 2027", "", "phd"),
+        ("Research Scientist Intern (PhD)", "", "phd"),
+        (
+            "Applied Scientist",
+            "Basic Qualifications\n- PhD or equivalent research experience",
+            "phd",
+        ),
+        ("ML Intern", "Requirements\n- Currently pursuing a PhD in CS or a related field", "phd"),
+        ("MBA HR Intern", "", "mba"),
+        ("Strategy Intern", "Requirements\n- Currently enrolled in an MBA program", "mba"),
+        ("Research Intern (MS/PhD)", "", None),
+        (
+            "AI Software Engineer",
+            "Minimum Qualifications\n- Bachelor's degree and 2+ years of experience, OR\n"
+            "- Master's degree and 1+ year of experience, OR\n- PhD in Computer Science",
+            None,
+        ),
+        (
+            "Co-Op, Reaction Prediction",
+            "Requirements\n- Pursuing a graduate degree (MSc, PhD)",
+            None,
+        ),
+        ("DL Intern", "Education\n- Current Master’s or Ph.D. candidate in CS", None),
+        ("ML Intern", "What you’ll need\n- Pursuing a PhD in ML", "phd"),
+        ("ML Intern", "Requirements\n- Pursuing a Master's or PhD in Computer Science", None),
+        ("ML Intern", "Requirements\n- BS in CS\nPreferred Qualifications\n- PhD", None),
+        ("ML Intern", "Requirements\n- Python\nPhD candidates are preferred.", None),
+        ("PhD Research Intern - Boston, MA", "", "phd"),  # "MA" here is a state, not a degree
+    ],
+)
+def test_degree_required(title, description, required):
+    assert degree_required(title, description, BS_MS) == required
+
+
+def test_degree_rule_follows_the_candidates_degrees():
+    assert apply_rules("PhD ML Intern", "NY", ML_DESC, degrees=BS_MS) == (
+        False,
+        "degree:phd-required",
+    )
+    assert apply_rules("PhD ML Intern", "NY", ML_DESC, degrees=frozenset({"ms", "phd"}))[0]
+    assert apply_rules("PhD ML Intern", "NY", ML_DESC)[0]  # off without DEGREES

@@ -62,6 +62,7 @@ Everything specific to the candidate lives outside the code, in gitignored files
 | Timing / location / visa constraints, free text | `data/profile.md` (start from [`profile.example.md`](profile.example.md)) | discovery scoring — sent with the résumé on every batch |
 | Spring graduation year | `GRADUATION_YEAR` in `.env` | Discover's term buckets and default view |
 | Places reachable while still in school | `LOCAL_AREA` in `.env` (comma-separated) | with `GRADUATION_YEAR`, the school-term locality rule |
+| Degrees held or in progress | `DEGREES` in `.env` (`bs`, `ms`, `mba`, `phd`) | rejects roles that require a PhD or MBA you don't have ("MS/PhD" passes) |
 
 All of it is optional: without them, discovery scores against a generic early-career AI/ML
 profile and shows every term.

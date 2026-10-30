@@ -68,12 +68,16 @@ async def discover_once(settings: Settings, boards: bool = True) -> None:
                 await asyncio.sleep(REQUEST_GAP_SECONDS)
             if settings.feeds_enabled:
                 await feeds.poll(conn, http)
-            passed, rejected = store.run_rules(conn, local, settings.graduation_year)
+            passed, rejected = store.run_rules(
+                conn, local, settings.graduation_year, settings.degrees
+            )
             if settings.feeds_enabled and await details.enrich(
                 conn, http, settings.graduation_year
             ):
                 # the described postings passed once on their title; some won't on the text
-                _, now_rejected = store.run_rules(conn, local, settings.graduation_year)
+                _, now_rejected = store.run_rules(
+                    conn, local, settings.graduation_year, settings.degrees
+                )
                 passed, rejected = passed - now_rejected, rejected + now_rejected
         if passed or rejected:
             log.info("rules filter: %d passed, %d rejected", passed, rejected)

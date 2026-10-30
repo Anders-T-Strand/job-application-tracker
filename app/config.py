@@ -31,6 +31,7 @@ class Settings(BaseModel):
     profile_path: Path = Path("data/profile.md")
     graduation_year: int | None = None
     local_area: str = ""
+    degrees: frozenset[str] = frozenset()  # the candidate's, e.g. {"bs", "ms"}; gates PhD/MBA roles
 
 
 def _load_dotenv(path: Path) -> None:
@@ -70,4 +71,7 @@ def load_settings(dotenv: Path | None = Path(".env")) -> Settings:
         profile_path=Path(env.get("PROFILE_PATH", "data/profile.md")),
         graduation_year=int(env["GRADUATION_YEAR"]) if env.get("GRADUATION_YEAR") else None,
         local_area=env.get("LOCAL_AREA", ""),
+        degrees=frozenset(
+            d.strip().lower() for d in env.get("DEGREES", "").split(",") if d.strip()
+        ),
     )
