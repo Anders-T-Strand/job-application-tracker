@@ -22,6 +22,12 @@ REQUIREMENTS = re.compile(
     r"|who you are)\b[^\n]{0,30}$",
     re.I | re.M,
 )
+# ...and sponsorship / work-authorization notes usually come last, past both.
+AUTHORIZATION = re.compile(
+    r"\b(visas?|sponsorship|(?-i:OPT|CPT)|work authori[sz]ation|authori[sz]ed to work)\b", re.I
+)
+SENTENCE_END = re.compile(r"(?<=[a-z]{2}[.!?])\s+|\n")  # not after "U.S."
+MAX_NOTE_CHARS = 400
 
 # Used when no resume file exists at settings.resume_path (data/resume.txt).
 DEFAULT_PROFILE = """\
@@ -98,10 +104,29 @@ def parse_scores(raw: str, expected_ids: set[int]) -> list[PostingScore]:
     return scores
 
 
+def authorization_notes(description: str, skip: str = "") -> str:
+    """The description's sponsorship / work-authorization sentences not already in `skip`."""
+    notes = []
+    for sentence in SENTENCE_END.split(description):
+        sentence = sentence.strip()
+        if AUTHORIZATION.search(sentence) and sentence not in skip and sentence not in notes:
+            notes.append(sentence)
+    return " ".join(notes)[:MAX_NOTE_CHARS]
+
+
 def excerpt(description: str, limit: int = MAX_DESC_CHARS) -> str:
-    """The start of the description plus its requirements section, within `limit`."""
+    """The start of the description, its requirements section and its work-authorization
+    notes, within `limit`."""
     if len(description) <= limit:
         return description
+    notes = authorization_notes(description, skip=_head_and_requirements(description, limit))
+    if not notes:
+        return _head_and_requirements(description, limit)
+    body = _head_and_requirements(description, limit - len(notes) - len("\n[...]\n"))
+    return f"{body}\n[...]\n{notes}"
+
+
+def _head_and_requirements(description: str, limit: int) -> str:
     head = limit // 3
     match = REQUIREMENTS.search(description, head)
     if not match:

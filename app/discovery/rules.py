@@ -33,15 +33,45 @@ US_STATE = re.compile(
     r"\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|"
     r"NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b"
 )
+# Work-authorization dealbreakers for a candidate who needs sponsorship, or the employer's
+# sign-off for CPT/OPT: sponsorship refused, CPT/OPT excluded, or permanent authorization,
+# citizenship or U.S.-person status (export control) required. OPT/CPT match in capitals
+# only, so "opt-out" doesn't count.
 NO_SPONSOR = re.compile(
-    r"(without (the need for |requiring )?(visa )?sponsorship"
-    r"|not (be able to |currently )?(provide|offer|sponsor)"
-    r"[^.]{0,40}(visa|sponsorship|work authorization)"
-    r"|unable to sponsor"
-    r"|no (visa )?sponsorship"
-    r"|must be (a )?(us|u\.s\.) citizen"
-    r"|citizenship (is )?required"
-    r"|security clearance)",
+    # "We do not offer any type of employment-based immigration sponsorship", "are not
+    # able to sponsor visas", "not eligible for CPT, OPT, or visa sponsorship"
+    r"(?:\bnot|n['’]t|\bcannot|\bunable to)(?:\s+(?:currently|presently|be|able|to|anticipate))*"
+    r"\s+(?:sponsor\w*|(?:provid(?:e|ing)|offer(?:ing)?|support(?:ing)?|consider(?:ing)?"
+    r"|pursu(?:e|ing)|includ(?:e|ing)|requir(?:e|ing)|eligible for|available for)\b[^.;]{0,80}?"
+    r"(?:(?<!-)\bsponsor\w*|\bvisas?\b|\b(?-i:OPT|CPT)\b|\bH-?1B\b"
+    r"|\bwork authori[sz]ation support))"
+    # "Visa sponsorship is not available", "Sponsorship now or in the future is NOT available"
+    r"|\bsponsorship\b[^.;]{0,60}?\b(?:is|are|will be)\s+(?:not\s+|un)(?:available|offered)"
+    r"|\bsponsorship available\s*:?\s*no\b"
+    r"|\bno\s+(?:(?:visa|immigration|employer|relocation|or|and)\s+)*sponsorship"
+    # "without current or future sponsorship", "without need of visa sponsorship"
+    r"|\bwithout\s+(?:the\s+)?(?:need\s+(?:of|for)\s+|requiring\s+)?"
+    r"(?:(?:any|current|future|now|or|and/or|visa|employer|immigration|employment)\s+)*"
+    r"(?:sponsorship|visa support)"
+    # "Applicants who require sponsorship now or in the future are not eligible"
+    r"|\b(?:requir|need)\w*\s+(?:\w+\s+){0,3}?sponsorship\b[^.;]{0,80}?"
+    r"\b(?:not eligible|ineligible|not be considered)"
+    r"|\bauthori[sz]\w* to work (?:permanently|indefinitely)"
+    r"|\bpermanent (?:work |employment )?authori[sz]ation"
+    r"|\bauthorized on an unrestricted basis"
+    r"|\bmust be (?:a )?(?:us|u\.s\.|united states) citizen"
+    r"|\brequires? (?:us |u\.s\. |united states )?citizenship"
+    r"|\bcitizenship (?:is )?required"
+    r"|\bcitizens? (?:and (?:active )?green card holders )?only\b"
+    r"|\bpermanent residents?\b.{0,120}?\b(?:asylees?|refugees?|protected individuals?)\b"
+    r"|\bsecurity clearance",
+    re.I,
+)
+# ...unless the posting welcomes students on their visa anyway: "sponsorship is not
+# available for our internships, but we welcome applicants on a student visa".
+STUDENT_VISA_OK = re.compile(
+    r"\bwelcome\w*\s+(?:\w+\s+){0,4}?(?:student visas?\b|F-?1\b|(?-i:OPT|CPT)\b)"
+    r"|\b(?-i:OPT|CPT)(?:/(?-i:OPT|CPT))?\s+(?:candidates|applicants|students)\s+(?:are\s+)?welcome",
     re.I,
 )
 
@@ -223,7 +253,7 @@ def apply_rules(
         and not local.area.search(location)
     ):
         return False, "geo:school-term-not-local-or-remote"
-    if NO_SPONSOR.search(description):
+    if NO_SPONSOR.search(description) and not STUDENT_VISA_OK.search(description):
         return False, "sponsor:explicit-negation"
     if graduation_year and graduates_too_late(description, graduation_year):
         return False, "timing:graduation-after-candidate"

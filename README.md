@@ -232,8 +232,10 @@ employer's job system — the Workday, Greenhouse, Lever, Ashby, SmartRecruiters
 Workable public APIs, else the schema.org `JobPosting` JSON-LD most career sites embed for
 search engines (Zapply links are followed through their redirect; one that lands back on
 zapply.jobs means the job closed). The posting then goes back through the rules — now able to
-see "no sponsorship", clearance and graduation-date requirements — and is re-scored on the
-real text. Up to 200 per cycle, one request at a time, default-view postings first; Summer+
+see "no sponsorship" (including CPT/OPT exclusions and permanent-authorization, citizenship or
+U.S.-person requirements; a posting that welcomes student visas passes), clearance and
+graduation-date requirements — and is re-scored on the real text, with its work-authorization
+notes kept in the scorer's excerpt. Up to 200 per cycle, one request at a time, default-view postings first; Summer+
 internships are skipped. On a sample of 80, 74 got a description and 14 of those were then
 rejected (mostly explicit no-sponsorship).
 

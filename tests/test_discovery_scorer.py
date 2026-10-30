@@ -115,3 +115,16 @@ def test_excerpt_keeps_the_requirements_of_a_long_posting():
     assert text.startswith("About us.")
     assert "Basic Qualifications\n- 3+ years of building models experience" in text
     assert excerpt("short posting", limit=1200) == "short posting"
+
+
+def test_excerpt_keeps_the_work_authorization_notes_at_the_end():
+    intro = "About us. " * 400
+    closing = "Benefits. " * 200
+    description = (
+        f"{intro}\nRequirements\n- Python\n{closing}\n"
+        "You must be authorized to work in the U.S. without sponsorship. Apply soon."
+    )
+    text = excerpt(description, limit=1200)
+    assert len(text) <= 1214  # plus the two "[...]" separators
+    assert "Requirements\n- Python" in text
+    assert text.endswith("You must be authorized to work in the U.S. without sponsorship.")

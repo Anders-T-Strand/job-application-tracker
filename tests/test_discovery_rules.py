@@ -100,16 +100,57 @@ def test_post_graduation_terms_pass_anywhere():
     assert apply_rules("Machine Learning Intern", "Seattle, WA", ML_DESC, local=LOCAL)[0]
 
 
-def test_sponsorship_negation_rejects():
-    for phrase in (
+@pytest.mark.parametrize(
+    "phrase",
+    [
         "We are unable to sponsor visas for this role.",
         "Applicants must be a U.S. citizen.",
         "This position requires an active security clearance.",
         "We cannot consider candidates without sponsorship. No visa sponsorship is available.",
-    ):
-        passed, reason = apply_rules("ML Intern", "New York, NY", f"{ML_DESC} {phrase}")
-        assert not passed, phrase
-        assert reason == "sponsor:explicit-negation"
+        "We do not offer any type of employment-based immigration sponsorship for this program.",
+        "We will not provide any assistance in support of optional practical training (OPT).",
+        "Authorized to work permanently in the United States.",
+        "Visa sponsorship is not available for our new grad positions.",
+        "Sponsorship now or in the future is NOT available for this position.",
+        "This position is not eligible for CPT, OPT, or visa sponsorship, now or in the future.",
+        "The company does not sponsor/support H-1B petitions, TN, or Forms I-983/STEM OPT.",
+        "We are not able to sponsor visas for this role.",
+        "Vanguard is not offering visa sponsorship for this position.",
+        "Must have permanent work authorization in the United States.",
+        "Authorized to work in the U.S. without current or future sponsorship.",
+        "Applicants who require sponsorship now or in the future are not eligible.",
+        "We’re unable to consider candidates who require sponsorship now or in the future.",
+        "Must not require school or employer sponsorship.",
+        "No relocation or sponsorship offered.",
+        "Sponsorship Available:No",
+        "You must be a U.S. Person: a U.S. citizen, permanent resident, asylee, or refugee.",
+        "Clearance eligible (requires US citizenship).",
+    ],
+)
+def test_sponsorship_negation_rejects(phrase):
+    passed, reason = apply_rules("ML Intern", "New York, NY", f"{ML_DESC} {phrase}")
+    assert (passed, reason) == (False, "sponsor:explicit-negation")
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "We do sponsor visas! But we aren't able to successfully sponsor visas for every role.",
+        "Visa sponsorship is available.",
+        "Legally authorized to work in the U.S.",
+        "H-1B sponsorship available; OPT/CPT candidates welcome.",
+        "Visa sponsorship is not available for internships, but we welcome applicants on a "
+        "student visa (with authorization to work in the U.S.).",
+        "You may opt out of our health plan. This role is not eligible for company-sponsored "
+        "benefits.",
+        "We hire without regard to race, religion, national origin or citizenship status.",
+        "The offer may be contingent upon your citizenship/permanent residency status or ability "
+        "to obtain prior license approval.",
+        "Full-time, permanent positions are eligible for a bonus.",
+    ],
+)
+def test_sponsorship_friendly_or_unrelated_text_passes(phrase):
+    assert apply_rules("ML Intern", "New York, NY", f"{ML_DESC} {phrase}") == (True, "")
 
 
 def test_field_stems_match_whole_words():
