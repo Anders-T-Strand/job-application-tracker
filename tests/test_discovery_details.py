@@ -35,6 +35,16 @@ RESPONSES = {
             {"ExternalDescriptionStr": "<p>Oracle role</p>", "ExternalQualificationsStr": "SQL"}
         ]
     },
+    "https://www.amazon.jobs/en/search.json": {
+        "jobs": [
+            {
+                "id_icims": "10522632",
+                "description": "<p>Applied science role</p>",
+                "basic_qualifications": "- PhD or equivalent<br/>- 3+ years of experience",
+                "preferred_qualifications": "- 5+ years of experience",
+            }
+        ]
+    },
     "https://apply.workable.com/api/v2/accounts/raydar/jobs/31364F00E3": {
         "description": "<p>Workable role</p>",
         "requirements": "<p>Python</p>",
@@ -86,6 +96,11 @@ def _transport(calls: list[str]) -> httpx.MockTransport:
             "Oracle role\nSQL",
         ),
         ("https://apply.workable.com/raydar/j/31364F00E3/apply", "Workable role\nPython"),
+        (
+            "https://amazon.jobs/en/jobs/10522632/applied-scientist-crypto",
+            "Applied science role\nBasic Qualifications\n- PhD or equivalent\n"
+            "- 3+ years of experience\nPreferred Qualifications\n- 5+ years of experience",
+        ),
         ("https://careers.example.com/jobs/7", "Applied AI intern, & more"),  # JSON-LD fallback
         ("https://zapply.jobs/l/d/workday-acme-R1", "Spring 2027 co-op.\nPython"),  # redirect
     ],

@@ -4,8 +4,8 @@ Feeds list only a title. For feed postings that pass the title-only rules, this 
 the description from the employer's job system and stores it as plain text; the posting
 then goes back through the rules (sponsorship, graduation window, ...) and is re-scored.
 
-Sources, by URL: Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Oracle HCM and
-Workable public APIs; anything else falls back to the schema.org JobPosting JSON-LD
+Sources, by URL: Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Oracle HCM,
+Workable and amazon.jobs public APIs; anything else falls back to the schema.org JobPosting JSON-LD
 many career sites embed for search engines. Zapply links are redirects: a live job
 resolves to the employer URL, a closed one back to zapply.jobs (then marked not live).
 
@@ -143,6 +143,22 @@ async def _workable(http: httpx.AsyncClient, url: str) -> str:
     return "\n\n".join(data.get(key) or "" for key in ("description", "requirements", "benefits"))
 
 
+async def _amazon(http: httpx.AsyncClient, url: str) -> str:
+    _, parts = _parts(url)  # /{lang}/jobs/{id}/{slug}
+    job_id = parts[parts.index("jobs") + 1]
+    data = await _json(
+        http, "https://www.amazon.jobs/en/search.json", params={"job_id_icims[]": job_id}
+    )
+    for job in data.get("jobs") or []:
+        if str(job.get("id_icims")) == job_id:
+            return (  # headings keep basic vs preferred apart for the experience rule
+                f"{job.get('description') or ''}<p>Basic Qualifications</p>"
+                f"{job.get('basic_qualifications') or ''}<p>Preferred Qualifications</p>"
+                f"{job.get('preferred_qualifications') or ''}"
+            )
+    raise Closed(url)
+
+
 async def _json_ld(http: httpx.AsyncClient, url: str) -> str:
     response = await http.get(url, headers=HEADERS, follow_redirects=True)
     if response.status_code == 404:
@@ -189,6 +205,8 @@ async def fetch_description(http: httpx.AsyncClient, url: str, cache: dict) -> s
         raw = await _oracle(http, url)
     elif host == "apply.workable.com" and len(parts) >= 3 and parts[1] == "j":
         raw = await _workable(http, url)
+    elif host.endswith("amazon.jobs") and "jobs" in parts[:-1]:
+        raw = await _amazon(http, url)
     else:  # custom career sites (incl. Greenhouse-on-own-domain ?gh_jid=...)
         raw = await _json_ld(http, url)
     return strip_html(raw)[:MAX_CHARS].strip()

@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 import sqlite3
 from pathlib import Path
 
@@ -14,7 +15,13 @@ log = logging.getLogger(__name__)
 
 BATCH_SIZE = 8  # postings per LLM call
 MAX_PER_RUN = 500  # per discovery cycle; the rest is picked up next cycle
-MAX_DESC_CHARS = 1800
+MAX_DESC_CHARS = 2400
+# Requirements usually come after a long intro; a plain prefix would cut them off.
+REQUIREMENTS = re.compile(
+    r"^[^\n]{0,40}\b(qualifications|requirements|what you('ll)? need|you (have|bring)"
+    r"|who you are)\b[^\n]{0,30}$",
+    re.I | re.M,
+)
 
 # Used when no resume file exists at settings.resume_path (data/resume.txt).
 DEFAULT_PROFILE = """\
@@ -91,10 +98,23 @@ def parse_scores(raw: str, expected_ids: set[int]) -> list[PostingScore]:
     return scores
 
 
+def excerpt(description: str, limit: int = MAX_DESC_CHARS) -> str:
+    """The start of the description plus its requirements section, within `limit`."""
+    if len(description) <= limit:
+        return description
+    head = limit // 3
+    match = REQUIREMENTS.search(description, head)
+    if not match:
+        return description[:limit]
+    return (
+        f"{description[:head]}\n[...]\n{description[match.start() : match.start() + limit - head]}"
+    )
+
+
 def _batch_prompt(profile: str, rows: list[sqlite3.Row], constraints: str) -> str:
     parts = [f"Candidate profile:\n{profile}\n\nConstraints:\n{constraints}\nPostings:"]
     for row in rows:
-        description = (row["description"] or "")[:MAX_DESC_CHARS]
+        description = excerpt(row["description"] or "")
         visa = "Visa: employer likely sponsors (feed estimate)\n" if row["visa_sponsor"] else ""
         terms = f"Term: {row['terms']}\n" if row["terms"] else ""
         parts.append(

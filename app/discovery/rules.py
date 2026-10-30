@@ -73,6 +73,67 @@ def graduates_too_late(description: str, graduation_year: int) -> bool:
     return bool(dates) and min(dates) > (graduation_year, 6)
 
 
+# Required experience beyond early career: "3+ years of building models ... experience",
+# "minimum of 4 years' experience". Only requirement lines count: those under a required/
+# basic/qualifications heading, or that say "must"/"required"/"at least" themselves —
+# never preferred / nice-to-have ones, nor company blurbs ("more than 30 years of
+# investing experience"), which also end a requirements section when they follow it.
+# Ranges count from their low end ("1–3 years"). Lines offering degree alternatives
+# ("PhD, or Master's and 4+ years", "in lieu of education, 4 years") are skipped, since
+# one of the paths may need no experience.
+MAX_REQUIRED_YEARS = 2
+MAX_PLAUSIBLE_YEARS = 15  # beyond this it's company history, not a requirement
+EXPERIENCE = re.compile(
+    r"\b(\d{1,2})\s*(?:\+|plus)?\s*(?:(?:[-–—]|to)\s*\d{1,2}\s*)?(?:or more\s+)?years?['’]?\s+"
+    r"(?:of\s+)?[^.;\n]{0,80}?\bexperience",
+    re.I,
+)
+REQUIRED_HEAD = re.compile(
+    r"\b(basic|minimum|required|requirements?|qualifications|what you('ll)? need"
+    r"|you (have|bring)|must[- ]haves?)\b",
+    re.I,
+)
+PREFERRED_HEAD = re.compile(r"\b(preferred|nice[- ]to[- ]have|bonus|pluses|a plus|desired)\b", re.I)
+OTHER_HEAD = re.compile(
+    r"^(about\b|who we are|our (company|culture|commitment|benefits)|benefits|compensation"
+    r"|perks|equal (employment )?opportunity)",
+    re.I,
+)
+SAYS_REQUIRED = re.compile(r"\b(required|must|minimum|at least)\b", re.I)
+DEGREE = re.compile(r"\b(degree|education|bachelor\w*|master'?s|ph\.?\s?d|bs|ms|ba|ma|mba)\b", re.I)
+ALTERNATIVE = re.compile(r"\b(or|in lieu of|instead of)\b", re.I)
+PARAGRAPH = 300  # requirement bullets are short; a longer line is prose (intro, about us)
+
+
+def required_years(description: str) -> int:
+    """The most years of experience a requirement asks for (0 if none)."""
+    section = None  # None until a heading: "required" | "preferred"
+    most = 0
+    for line in description.splitlines():
+        heading = line.strip(" -•*·:\t")
+        if len(heading) < 60 and not EXPERIENCE.search(heading):
+            if PREFERRED_HEAD.search(heading):
+                section = "preferred"
+                continue
+            if REQUIRED_HEAD.search(heading):
+                section = "required"
+                continue
+            if OTHER_HEAD.search(heading):
+                section = None
+                continue
+        if section == "preferred" or PREFERRED_HEAD.search(line):
+            continue
+        says_required = SAYS_REQUIRED.search(line)
+        if not says_required and (section != "required" or len(line) > PARAGRAPH):
+            continue
+        if ALTERNATIVE.search(line) and DEGREE.search(line):
+            continue
+        for match in EXPERIENCE.finditer(line):
+            if (years := int(match.group(1))) <= MAX_PLAUSIBLE_YEARS:
+                most = max(most, years)
+    return most
+
+
 @dataclass(frozen=True)
 class Locality:
     """A candidate still in school can only be on-site near campus until graduating."""
@@ -111,6 +172,8 @@ def apply_rules(
         return False, "stage:no-early-career-signal"
     if STAGE_EXCLUDE.search(title):
         return False, "stage:senior-term-in-title"
+    if required_years(description) > MAX_REQUIRED_YEARS:
+        return False, "stage:years-of-experience"
     if not FIELD.search(f"{title} {description}"):
         return False, "field:no-ai-ml-ds-terms"
     loc_blob = f"{location} {description[:500]}"

@@ -3,6 +3,7 @@ import json
 from app.discovery.scorer import (
     DEFAULT_CONSTRAINTS,
     DEFAULT_PROFILE,
+    excerpt,
     load_constraints,
     load_profile,
     parse_scores,
@@ -104,3 +105,13 @@ def test_constraints_come_from_the_private_profile_file(tmp_path):
     profile = tmp_path / "profile.md"
     profile.write_text("- Needs remote work.")
     assert load_constraints(profile) == "- Needs remote work."
+
+
+def test_excerpt_keeps_the_requirements_of_a_long_posting():
+    intro = "About us. " * 400  # ~4000 chars of company intro
+    description = f"{intro}\nBasic Qualifications\n- 3+ years of building models experience"
+    text = excerpt(description, limit=1200)
+    assert len(text) <= 1210
+    assert text.startswith("About us.")
+    assert "Basic Qualifications\n- 3+ years of building models experience" in text
+    assert excerpt("short posting", limit=1200) == "short posting"

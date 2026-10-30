@@ -1,6 +1,6 @@
 import pytest
 
-from app.discovery.rules import apply_rules, graduates_too_late, locality
+from app.discovery.rules import apply_rules, graduates_too_late, locality, required_years
 
 ML_DESC = "Join our machine learning team building recommendation models. Based in New York, NY."
 
@@ -139,3 +139,58 @@ def test_postdocs_are_not_early_career_even_from_a_new_grad_feed():
             False,
             "stage:senior-term-in-title",
         )
+
+
+AMAZON_STYLE = """Description
+Our team has over 30 years of experience building secure systems.
+Basic Qualifications
+- PhD, or Master's degree and 4+ years of CS, CE, ML or related field experience
+- 2+ years of programming in Java, C++, Python or related language experience
+- 3+ years of building models for business application experience
+Preferred Qualifications
+- 5+ years of experience in deep learning"""
+
+
+@pytest.mark.parametrize(
+    "description,years",
+    [
+        (AMAZON_STYLE, 3),  # the 4+ line has a degree alternative; preferred 5+ is ignored
+        ("Requirements\n- 0-2 years of experience in data science", 0),
+        ("Qualifications\n- Bachelor's and 3+ years of experience, or Master's and 1+ year", 0),
+        ("Qualifications:\n- 3-5 years of experience shipping ML systems", 3),
+        ("Nice to have\n- 4+ years of experience with Spark", 0),
+        ("We bring over 100 years of experience to our clients.\nRequirements\n- Python", 0),
+        ("You must have at least 5 years of professional experience in ML.", 5),
+        ("What you'll need\n- 1+ year of experience with Python", 1),
+        ("Requirements\n- 2+ years of coursework in statistics", 0),  # not experience
+        ("Minimum Qualifications\n- 6+ years of machine learning or statistics experience", 6),
+    ],
+)
+def test_required_years(description, years):
+    assert required_years(description) == years
+
+
+def test_experience_beyond_early_career_rejects_even_with_a_new_grad_tag():
+    assert apply_rules(
+        "Applied Scientist", "Seattle, WA", f"{ML_DESC}\n{AMAZON_STYLE}", terms="New Grad"
+    ) == (
+        False,
+        "stage:years-of-experience",
+    )
+    early = f"{ML_DESC}\nRequirements\n- 0-2 years of experience"
+    assert apply_rules("Applied Scientist", "Seattle, WA", early, terms="New Grad")[0]
+
+
+@pytest.mark.parametrize(
+    "description",
+    [
+        "Requirements\n• 1–3 years of hands-on experience (including internships) in ML",
+        "Qualifications\n- 1 to 3 years of experience with SQL",
+        "Requirements\n- Bachelor's degree.\nIn lieu of education, 4 years of relevant experience.",
+        "What's Required\n- Python\n" + "About Point72. Building on more than 30 years of "
+        "investing experience, we seek to deliver superior returns for our investors. " * 4,
+        "What's Required\n- Python\nAbout Us\nWe have 10 years of experience serving clients.",
+    ],
+)
+def test_early_career_wording_is_not_mistaken_for_required_experience(description):
+    assert required_years(description) <= 2

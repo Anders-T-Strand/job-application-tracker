@@ -42,8 +42,15 @@ class _TextExtractor(HTMLParser):
     def handle_data(self, data: str) -> None:
         self._out.write(data)
 
+    BLOCKS = ("p", "br", "li", "div", "tr", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6")
+
     def handle_starttag(self, tag: str, attrs: list) -> None:
-        if tag in ("p", "br", "li", "div", "tr", "h1", "h2", "h3", "h4"):
+        if tag in self.BLOCKS:
+            self._out.write("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        # "<h2>Qualifications:</h2>3+ years..." must not run the heading into the text
+        if tag in self.BLOCKS:
             self._out.write("\n")
 
     def text(self) -> str:
