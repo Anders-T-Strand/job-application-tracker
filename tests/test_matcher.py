@@ -119,9 +119,105 @@ def test_not_job_related_is_stored_and_ignored(conn):
 
 
 def test_confirmation_fills_missing_role_title(conn):
+    # a security-code email opened the application two days before the real confirmation
     app_id = add_application(conn, company="Acme", role_title=None)
-    email_id = add_email(conn)
+    email_id = add_email(conn, received_at="2026-06-22T10:00:00Z")
     matcher.process_email(conn, email_id, cls(role_title="Platform Engineer"))
     app_row = conn.execute("SELECT * FROM applications WHERE id = ?", (app_id,)).fetchone()
     assert app_row["role_title"] == "Platform Engineer"
     assert app_row["status"] == "applied"  # confirmations never change status
+    assert len(all_apps(conn)) == 1
+
+
+def test_confirmation_joins_a_recent_discover_handoff_despite_different_wording(conn):
+    app_id = add_application(conn, company="Acme", role_title="ML Engineer, New Grad")
+    conn.execute("UPDATE applications SET source = 'discovery' WHERE id = ?", (app_id,))
+    email_id = add_email(conn, received_at="2026-06-20T00:05:00Z")
+    role = "Machine Learning Engineer - University Graduate 2027"
+    matcher.process_email(conn, email_id, cls(role_title=role))
+    assert len(all_apps(conn)) == 1
+    assert get_email(conn, email_id)["application_id"] == app_id
+
+
+def test_role_confirmation_long_after_a_roleless_application_is_a_new_one(conn):
+    add_application(conn, company="Acme", role_title=None)  # applied 2026-06-20
+    email_id = add_email(conn, received_at="2026-11-01T10:00:00Z")
+    matcher.process_email(conn, email_id, cls(role_title="Platform Engineer"))
+    assert len(all_apps(conn)) == 2
+
+
+def test_shared_ats_domain_never_links_different_companies(conn):
+    # unrelated names can share enough letters to score 74, past the old domain boost's 50
+    silverton_id = add_application(conn, company="Silverton", ats_domain="us.greenhouse-mail.io")
+    email_id = add_email(conn, from_addr="no-reply@us.greenhouse-mail.io")
+    matcher.process_email(conn, email_id, cls(company="Riverstone", role_title="ML Engineer"))
+    apps = {row["company"]: row["id"] for row in all_apps(conn)}
+    assert set(apps) == {"Silverton", "Riverstone"}
+    assert get_email(conn, email_id)["application_id"] == apps["Riverstone"] != silverton_id
+
+
+def test_employer_domain_still_corroborates_a_loosely_matching_name(conn):
+    # the names alone score 71, short of a match, but the employer's own domain agrees
+    app_id = add_application(conn, company="Contoso Tech Inc", ats_domain="contoso.com")
+    email_id = add_email(conn, from_addr="careers@contoso.com")
+    matcher.process_email(conn, email_id, cls(type="rejection", company="Contoso Technology"))
+    assert get_email(conn, email_id)["application_id"] == app_id
+
+
+def test_new_role_at_the_same_company_is_a_new_application(conn):
+    old_id = add_application(conn, company="Acme", role_title="Software Engineer Intern")
+    email_id = add_email(conn, received_at="2026-11-20T10:00:00Z")
+    role = "Data Scientist, New Grad 2027"
+    matcher.process_email(conn, email_id, cls(role_title=role))
+    new = conn.execute("SELECT * FROM applications WHERE id != ?", (old_id,)).fetchone()
+    assert new["role_title"] == role and new["applied_at"] == "2026-11-20T10:00:00Z"
+    assert get_email(conn, email_id)["application_id"] == new["id"]
+
+
+def test_repeat_confirmation_for_the_same_role_attaches(conn):
+    app_id = add_application(conn, company="Acme", role_title="Full-Stack Data Science Intern")
+    email_id = add_email(conn, received_at="2026-11-20T10:00:00Z")
+    role = "Full Stack Data Science Intern"
+    matcher.process_email(conn, email_id, cls(company="Acme Insurance Company", role_title=role))
+    assert len(all_apps(conn)) == 1
+    assert get_email(conn, email_id)["application_id"] == app_id
+
+
+def test_roleless_confirmation_joins_the_latest_application(conn):
+    add_application(
+        conn,
+        company="Acme",
+        role_title="Software Engineer Intern",
+        applied_at="2026-01-05T00:00:00Z",
+    )
+    latest = add_application(
+        conn,
+        company="Acme",
+        role_title="Data Scientist, New Grad",
+        applied_at="2026-11-01T00:00:00Z",
+    )
+    email_id = add_email(conn, received_at="2026-11-20T10:00:00Z", subject="Confirm your identity")
+    matcher.process_email(conn, email_id, cls())
+    assert len(all_apps(conn)) == 2
+    assert get_email(conn, email_id)["application_id"] == latest
+
+
+def test_update_picks_the_application_for_its_role(conn):
+    intern = add_application(conn, company="Acme", role_title="Software Engineer Intern")
+    add_application(conn, company="Acme", role_title="Data Scientist, New Grad")
+    email_id = add_email(conn)
+    matcher.process_email(
+        conn, email_id, cls(type="rejection", role_title="Software Engineer Intern")
+    )
+    statuses = {row["id"]: row["status"] for row in all_apps(conn)}
+    assert statuses[intern] == "rejected"
+    assert sorted(statuses.values()) == ["applied", "rejected"]
+
+
+def test_update_without_a_role_picks_the_only_open_application(conn):
+    add_application(conn, company="Acme", role_title="Software Engineer Intern", status="rejected")
+    open_id = add_application(conn, company="Acme", role_title="Data Scientist, New Grad")
+    email_id = add_email(conn)
+    matcher.process_email(conn, email_id, cls(type="oa_invite"))
+    assert get_email(conn, email_id)["application_id"] == open_id
+    assert get_email(conn, email_id)["needs_review"] == 0

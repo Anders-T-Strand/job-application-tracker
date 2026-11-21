@@ -3,15 +3,20 @@
 import sqlite3
 from datetime import UTC, datetime
 
-from rapidfuzz import fuzz
+from rapidfuzz import fuzz, utils
 
-from app.classifier.prefilter import sender_domain
-from app.models import STATUS_FOR_TYPE, EmailClassification
+from app.classifier.prefilter import is_ats_domain, sender_domain
+from app.models import OPEN_STATUSES, STATUS_FOR_TYPE, EmailClassification
 
 MATCH_THRESHOLD = 86
 AMBIGUITY_MARGIN = 5
 LOW_CONFIDENCE = 0.6
-DOMAIN_AGREEMENT_MIN = 50  # domain boost needs the company name to at least roughly agree
+DOMAIN_AGREEMENT_MIN = 50  # an employer-domain boost needs the names to roughly agree
+ROLE_MATCH = 90  # role titles this similar are the same job ("Full-Stack ..." = "Full Stack ...")
+# A confirmation within this many days of a role-less email (a security code) or of an
+# "Applied" click on Discover belongs to that application, however its role is worded.
+# Later, a new role is a new application.
+SAME_APPLICATION_DAYS = 7
 
 
 def utcnow() -> str:
@@ -23,34 +28,70 @@ def _score(app_row: sqlite3.Row, company: str | None, domain: str) -> float:
     if company and app_row["company"]:
         fuzzy = fuzz.token_set_ratio(company.lower(), app_row["company"].lower())
     score = fuzzy
-    # ATS domains (myworkday.com, greenhouse-mail.io, ...) are shared by many
-    # employers: same domain corroborates a match but must never override a
-    # conflicting company name (a Nike rejection is not a Micron rejection
-    # just because both came via Workday).
-    domain_agrees = company is None or fuzzy >= DOMAIN_AGREEMENT_MIN
+    # The same sender domain corroborates a match. ATS domains (myworkday.com,
+    # greenhouse-mail.io, ...) send for thousands of employers, so they only count when the
+    # email names no company: one company's confirmation is not another's just because both
+    # came via Greenhouse, even when unrelated names share enough letters to score over 50.
+    domain_agrees = company is None or (not is_ats_domain(domain) and fuzzy >= DOMAIN_AGREEMENT_MIN)
     if domain and app_row["ats_domain"] and domain == app_row["ats_domain"] and domain_agrees:
         score = max(score, 90.0)
     return score
 
 
-def find_match(
+def find_candidates(
     conn: sqlite3.Connection, company: str | None, domain: str
-) -> tuple[sqlite3.Row | None, bool]:
-    """Best-matching application for (company, sender domain). Returns (match, ambiguous)."""
-    scored = sorted(
-        ((_score(row, company, domain), row) for row in conn.execute("SELECT * FROM applications")),
-        key=lambda pair: pair[0],
-        reverse=True,
+) -> list[sqlite3.Row]:
+    """The applications the email's company matches best, newest first; empty if none is
+    close enough. Several means several applications at the same company."""
+    scored = [
+        (_score(row, company, domain), row) for row in conn.execute("SELECT * FROM applications")
+    ]
+    best = max((score for score, _ in scored), default=0.0)
+    if best < MATCH_THRESHOLD:
+        return []
+    candidates = [
+        row for score, row in scored if score >= MATCH_THRESHOLD and best - score < AMBIGUITY_MARGIN
+    ]
+    return sorted(candidates, key=lambda row: row["applied_at"], reverse=True)
+
+
+def same_role(role: str | None, other: str | None) -> bool:
+    return bool(role and other) and (
+        fuzz.token_set_ratio(role, other, processor=utils.default_process) >= ROLE_MATCH
     )
-    if not scored or scored[0][0] < MATCH_THRESHOLD:
+
+
+def pick_application(
+    candidates: list[sqlite3.Row], cls: EmailClassification, received_at: str
+) -> tuple[sqlite3.Row | None, bool]:
+    """Which of the company's applications an email is about: (application, ambiguous).
+    A confirmation for a role none of them is for returns (None, False): a new application."""
+    if cls.type == "application_confirmation":
+        if not cls.role_title:  # security codes, "your application was sent": the latest
+            return candidates[0], False
+        for app_row in candidates:
+            if same_role(cls.role_title, app_row["role_title"]):
+                return app_row, False
+        for app_row in candidates:
+            loose = not app_row["role_title"] or app_row["source"] == "discovery"
+            if loose and _days_between(app_row["applied_at"], received_at) <= SAME_APPLICATION_DAYS:
+                return app_row, False
         return None, False
-    if (
-        len(scored) > 1
-        and scored[1][0] >= MATCH_THRESHOLD
-        and scored[0][0] - scored[1][0] < AMBIGUITY_MARGIN
+    if len(candidates) == 1:
+        return candidates[0], False
+    # several applications at the company: the one for this role, else the only open one
+    for narrowed in (
+        [row for row in candidates if same_role(cls.role_title, row["role_title"])],
+        [row for row in candidates if row["status"] in OPEN_STATUSES],
     ):
-        return scored[0][1], True
-    return scored[0][1], False
+        if len(narrowed) == 1:
+            return narrowed[0], False
+    return candidates[0], True
+
+
+def _days_between(start: str, end: str) -> float:
+    delta = datetime.fromisoformat(end) - datetime.fromisoformat(start)
+    return abs(delta.total_seconds()) / 86400
 
 
 def process_email(conn: sqlite3.Connection, email_id: int, cls: EmailClassification) -> None:
@@ -69,7 +110,9 @@ def process_email(conn: sqlite3.Connection, email_id: int, cls: EmailClassificat
         return
 
     domain = sender_domain(email["from_addr"])
-    match, ambiguous = find_match(conn, cls.company, domain)
+    match, ambiguous = None, False
+    if candidates := find_candidates(conn, cls.company, domain):
+        match, ambiguous = pick_application(candidates, cls, email["received_at"])
     if ambiguous:
         _flag_review(conn, email_id)
         return

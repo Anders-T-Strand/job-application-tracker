@@ -19,6 +19,9 @@ SAMPLES = [
     ("smartjobalert@postjobfree.com", "New jobs: ML Engineer", "Apply now - recruiting", False),
     ("opportunities@careeralerts-us.pwc.com", "Roles for you", "Your application journey", False),
     ("jobs-noreply@linkedin.com", "Alex, your application was sent to Acme", "", True),
+    # real application mail from an alert domain still gets through on its subject
+    ("hiring@jobalerts.example.com", "Next Steps for Your Application", "", True),
+    ("hiring@jobalerts.example.com", "New jobs matching your profile", "Your application", False),
 ]
 
 

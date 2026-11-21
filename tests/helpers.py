@@ -82,13 +82,14 @@ def add_application(
     role_title: str | None = None,
     ats_domain: str | None = None,
     status: str = "applied",
+    applied_at: str = "2026-06-20T00:00:00Z",
     last_activity_at: str = "2026-06-20T00:00:00Z",
 ) -> int:
     cursor = conn.execute(
         "INSERT INTO applications"
         " (company, role_title, source, ats_domain, applied_at, status, last_activity_at)"
-        " VALUES (?, ?, 'email', ?, '2026-06-20T00:00:00Z', ?, ?)",
-        (company, role_title, ats_domain, status, last_activity_at),
+        " VALUES (?, ?, 'email', ?, ?, ?, ?)",
+        (company, role_title, ats_domain, applied_at, status, last_activity_at),
     )
     conn.commit()
     assert cursor.lastrowid is not None
